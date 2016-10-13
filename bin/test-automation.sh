@@ -5,7 +5,7 @@ UCI="/sbin/uci"
 UBUS="/bin/ubus"
 IWINFO="/usr/bin/iwinfo"
 WIFI="/sbin/wifi"
-WIFISETUP="/rom/usr/bin/wifisetup"
+WIFISETUP="/usr/bin/wifisetup"
 
 # global variable: internal
 bUsage=0
