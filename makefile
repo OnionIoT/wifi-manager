@@ -7,7 +7,7 @@ DST := $(shell echo $(SOURCES) | sed -e 's/\.$(SRCEXT)//')
 all: copy
 
 copy:
-	@cp $(SOURCES) $(DST)
+	@echo $(SOURCES)
 
 clean:
 	@rm -rf $(DST)
