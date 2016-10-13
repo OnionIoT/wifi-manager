@@ -1,6 +1,6 @@
 #!/bin/sh
 
-## script to setup uci wireless configuration for use with wdb40 utility
+## script to setup uci wireless configuration for use with wifimanager utility
 
 . /usr/share/libubox/jshn.sh
 
@@ -78,7 +78,7 @@ usage () {
 	_Print ""
 
 	_Print ""
-	_Print "Run 'wdb40' to make network configuration changes take effect"
+	_Print "Run 'wifimanager' to make network configuration changes take effect"
 	_Print ""
 }
 
