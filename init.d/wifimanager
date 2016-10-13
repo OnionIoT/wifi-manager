@@ -2,9 +2,9 @@
 
 START=79
 
-BIN=/root/test_lim/wifi_manager/test_wifimanager.sh
+BIN=/usr/bin/wifimanager
 
 boot() {
-    echo "wifi_manager boot"
+    echo "wifimanager boot"
     $BIN -boot
 }
