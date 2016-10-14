@@ -14,9 +14,9 @@ bVerbose=0
 
 
 # file destinations
-OUTFILE=/root/test_lim/wifi_manager/int_tmp_test.txt
-OUTPUT_FILE=/root/test_lim/wifi_manager/result.txt
-SCAN_FILE=/root/test_lim/wifi_manager/scannable_networks
+OUTFILE=/root/int_tmp_test.txt
+OUTPUT_FILE=/root/result.txt
+SCAN_FILE=/root/scannable_networks
 
 _Print () {
     if [ $bVerbose == 1 ]; then
