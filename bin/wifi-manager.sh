@@ -22,7 +22,7 @@ bVerbose=0
 bTest=0
 
 # output files if necessary
-TEST_OUT=/root/test_lim/wifi_manager/int_tmp_test.txt
+TEST_OUT=/root/int_tmp_test.txt
 
 _Print () {
     if [ $bVerbose == 1 ]; then
