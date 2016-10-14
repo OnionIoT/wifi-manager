@@ -932,6 +932,16 @@ if [ $id == -1 ]; then
 	_SetError
 fi
 
+if 	[ $bCmdAdd == 1 ] || 
+	[ $bCmdDisable == 1 ] ||
+	[ $bCmdEnable == 1 ] ||
+	[ $bCmdRemove == 1 ] ||
+	[ $bCmdPriority == 1 ];
+then
+	_Print "> Restarting wifimanager for changes to take effect" "status"
+	wifimanager &
+fi
+
 
 ## json finish
 _Close
