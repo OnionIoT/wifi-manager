@@ -1,13 +1,13 @@
 #!/bin/sh
 
 # function to connect to the first network in the match networks file
-#	enables configured network that was in the scan
-#	checks that connection was successful (wwan interface is up)
-#		if not successful:
-#			enable the AP network
-#			disable all STA networks
+#   enables configured network that was in the scan
+#   checks that connection was successful (wwan interface is up)
+#       if not successful:
+#           enable the AP network
+#           disable all STA networks
 # arguments:
-# 	arg1 - if set to force, will enable connect force option (wifi setup must be triggered)
+#   arg1 - if set to force, will enable connect force option (wifi setup must be triggered)
 
 # global variables: wifi libraries
 UCI="/sbin/uci"
@@ -20,6 +20,7 @@ bUsage=0
 bBoot=0
 bVerbose=0
 bTest=0
+
 
 # output files if necessary
 TEST_OUT=/root/int_tmp_test.txt
@@ -87,20 +88,34 @@ Get_network () {
     echo ${net_list:$step:$((step3+1))}
 }
 
-Find_index () {
-    network_str=$1
-    count=0
-    num_found=-1
-    while [ "$num_found" == -1 ]
-    do
-        ssid=$(echo $($UCI -q show wireless.@wifi-iface[$count].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
-        if [ "$ssid" == "$network_str" ]; then
-            num_found=$count
-        fi
-        count=$((count+1))
-    done
-    echo $num_found
+
+Get_id () {
+    echo $1 | cut -d " " -f $2
 }
+
+
+# Find_index () {
+    # network_str=$1
+    # starting_index=$2
+    
+    # if ("$starting_index" == 0); then
+    # count=0
+    # else
+    # count=$((starting_index+1))
+    # fi
+    
+    # num_found=-1
+    # while [ "$num_found" == -1 ]
+    # do
+        # ssid=$(echo $($UCI -q show wireless.@wifi-iface[$count].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
+        # _Print "SSID at index $count is $ssid"
+        # if [ "$ssid" == "$network_str" ]; then
+            # num_found=$count
+        # fi
+        # count=$((count+1))
+    # done
+    # echo $num_found
+# }
 
 # Use ubus command to look at the status of
 # wireless device. The "up" parameter should be true
@@ -118,12 +133,15 @@ Wait () {
 }
 
 Read () {
-    ssid_str=""
+    iwinfo_scans=$1
     step=0
+    ssid_str=""
+    
     while [ "$ret" != "" ]
     do
         mode=$(echo $($UCI -q show wireless.@wifi-iface[$step].mode) | grep -o "'.*'")
         ret=$(echo $($UCI -q show wireless.@wifi-iface[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
+        # res=$(Compare_str "$ret" "$ssid_str")
         if [ "$mode" == "'sta'" ]; then
             ssid_str="$ssid_str$ret "
         fi
@@ -140,6 +158,26 @@ Read () {
     echo $ssid_str
 }
 
+Read_idx () {
+    iwinfo_scans=$1
+    step=0
+    idx_str=""
+
+    while [ "$ret" != "" ]
+    do
+        mode=$(echo $($UCI -q show wireless.@wifi-iface[$step].mode) | grep -o "'.*'")
+        ret=$(echo $($UCI -q show wireless.@wifi-iface[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
+        if [ "$mode" == "'sta'" ]; then
+            idx_str="$idx_str$step "
+        fi
+        step=$((step + 1))
+    done
+    
+    echo $idx_str
+}
+
+
+
 Scan () {
     ret_str=""
     local ret=$( $IWINFO radio0 scan | grep -o '".*"')
@@ -151,7 +189,7 @@ Scan () {
             _Print $word
         done
     fi
-			
+            
     echo $ret
 }
 
@@ -209,32 +247,27 @@ Check_connection() {
     echo $ret
 }
 
+
 Connection_loop () {
     configured_nets=$1
     iwinfo_scans=$2
-    conf_net_num=$(Get_conf_net_num)    
+    conf_net_num=$(Get_conf_net_num)   
     res=0
     count=1
     conn_net=""
     while [ "$res" == 0 ]
     do
-        _Print " " 
+        _Print " "
         _Print " "
         connection=$(Get_network "$configured_nets" $count)
+        index=$(Get_id "$index_nets" $count)
         _Print " trying to connect to... $connection" 
         res=$(Compare_str "$connection" "$iwinfo_scans")
         if [ "$res" == 1 ]; then
-            _Print "$connection found, now connecting" 
-            if [ $bTest == 1 ]; then
-                echo -n "$connection connected : " >> $TEST_OUT
-            fi
-            conn_net=$connection
-            index=$(Find_index "$conn_net")
-
             $(Connect "$index")
             _Print "Calling wifi interface..." 
             $($WIFI)
-            sleep 15
+            sleep 10
             checked=$(Check_connection)
             if [ $checked == 1 ]; then
                 res=0
@@ -245,7 +278,11 @@ Connection_loop () {
             count=$((count+1))
         fi
         if [ $count == $conf_net_num ]; then
-           _Print "ran out of configured networks... no station available" 
+           _Print "ran out of configured networks... no station available"
+            count=$((count-1))
+            $($UCI set wireless.@wifi-iface[$count].disabled=1)
+            $($UCI commit)
+            $($WIFI)
            break
         fi
     done
@@ -293,6 +330,7 @@ Regular_Seq () {
     # READ CONFIGURED NETWORKS
     _Print "Reading configured networks in station mode..."
     configured_nets=$(Read)
+    index_nets=$(Read_idx)
     if [ "$configured_nets" == "" ]; then
         _Print "no configured station networks... aborting"
         if [ "$bTest" == 1 ]; then
@@ -301,8 +339,8 @@ Regular_Seq () {
         exit
     fi
 
-    
-    # SCAN NEARBY NETWORKS	
+
+    # SCAN NEARBY NETWORKS  
     _Print ""
     _Print "Scanning nearby networks..."
     iwinfo_scans=$(Scan)
@@ -315,7 +353,7 @@ Regular_Seq () {
     fi
 
     # CONNECT TO MATCHING NETWORKS
-    _Print  ""	
+    _Print  ""  
     $(Connection_loop "$configured_nets" "$iwinfo_scans")
 
     _Print "Wifi manager finished"
@@ -349,9 +387,10 @@ Boot_Seq () {
     fi
 
 
-    # READ CONFIGURED NETWORKS    
+    # READ CONFIGURED NETWORKS
     _Print "Reading configured networks in station mode..."
     configured_nets=$(Read)
+    index_nets=$(Read_idx)
     if [ "$configured_nets" == "" ]; then
         _Print "no configured station networks... aborting"
         if [ "$bTest" == 1 ]; then
@@ -376,7 +415,7 @@ Boot_Seq () {
 
     # CONNECT TO MATCHED NETWORKS
     _Print ""
-    $(Connection_loop "$configured_nets" "$iwinfo_scans")
+    $(Connection_loop "$ssid_str" "$iwinfo_scans" "idx_str")
 
     _Print "wifi manager finished"
 
@@ -421,6 +460,4 @@ if [ $bBoot == 1 ]; then
 else
     Regular_Seq
 fi
-
-
 
