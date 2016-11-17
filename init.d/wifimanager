@@ -5,6 +5,5 @@ START=79
 BIN=/usr/bin/wifimanager
 
 boot() {
-    echo "wifimanager boot"
     $BIN -boot
 }

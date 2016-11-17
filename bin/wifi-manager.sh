@@ -35,7 +35,7 @@ _Print () {
 }
 
 Usage () {
-    _Print "WDB40: Omega Network Manager"
+    _Print "Omega2 Network Manager"
     _Print " Attempts to automatically connect to any configured networks"
     _Print ""
     _Print "This will always run at boot"
@@ -89,62 +89,34 @@ Get_network () {
 }
 
 
-Get_id () {
-    echo $1 | cut -d " " -f $2
-}
-
-
-# Find_index () {
-    # network_str=$1
-    # starting_index=$2
-    
-    # if ("$starting_index" == 0); then
-    # count=0
-    # else
-    # count=$((starting_index+1))
-    # fi
-    
-    # num_found=-1
-    # while [ "$num_found" == -1 ]
-    # do
-        # ssid=$(echo $($UCI -q show wireless.@wifi-iface[$count].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
-        # _Print "SSID at index $count is $ssid"
-        # if [ "$ssid" == "$network_str" ]; then
-            # num_found=$count
-        # fi
-        # count=$((count+1))
-    # done
-    # echo $num_found
-# }
-
 # Use ubus command to look at the status of
 # wireless device. The "up" parameter should be true
 Wait () {
-    local ret=$($UBUS call network.wireless status | grep up )
-    echo $ret | grep -q "true" && res=found
-    if [ "$res" == "found" ];
-    then
-        _Print "radio0 is up"
-    else
-        _Print "radio0 is not up"
-    fi
-
+    waitcount=0
+    waitflag=0
+    while [ "$waitcount" -le 20 ] &&
+        [ "$waitflag" == 0 ]; do
+        local ret=$($UBUS call network.device status '{"name":"ra0"}' | grep up )
+        echo $ret | grep -q "true" && res=found
+        if [ "$res" == "found" ];
+        then
+            _Print "radio0 is up"
+            waitflag=1
+        fi
+        sleep 1
+        waitcount=$((waitcount + 1))
+    done
     echo $res
 }
 
 Read () {
-    iwinfo_scans=$1
     step=0
     ssid_str=""
-    
+    ret=$(echo $($UCI -q show wireless.@wifi-config[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")    
     while [ "$ret" != "" ]
     do
-        mode=$(echo $($UCI -q show wireless.@wifi-iface[$step].mode) | grep -o "'.*'")
-        ret=$(echo $($UCI -q show wireless.@wifi-iface[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
-        # res=$(Compare_str "$ret" "$ssid_str")
-        if [ "$mode" == "'sta'" ]; then
+        ret=$(echo $($UCI -q show wireless.@wifi-config[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
             ssid_str="$ssid_str$ret "
-        fi
         step=$((step + 1))
     done
     
@@ -158,30 +130,47 @@ Read () {
     echo $ssid_str
 }
 
-Read_idx () {
-    iwinfo_scans=$1
+Read_key () {
     step=0
-    idx_str=""
+    key_str=""
+    ret=$(echo $($UCI -q show wireless.@wifi-config[$step].key) | grep -o "'.*'" | sed "s/'/\"/g")
+    while [ "$ret" != "" ]
+    do
+        ret=$(echo $($UCI -q show wireless.@wifi-config[$step].key) | grep -o "'.*'" | sed "s/'/\"/g")
+        key_str="$key_str$ret "
+        step=$((step + 1))
+    done
+
+    echo $key_str
+}
+
+Read_auth () {
+    step=0
+    auth_str=""
+    ret=$(echo $($UCI -q show wireless.@wifi-config[$step].encryption) | grep -o "'.*'" | sed "s/'/\"/g")
 
     while [ "$ret" != "" ]
     do
-        mode=$(echo $($UCI -q show wireless.@wifi-iface[$step].mode) | grep -o "'.*'")
-        ret=$(echo $($UCI -q show wireless.@wifi-iface[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
-        if [ "$mode" == "'sta'" ]; then
-            idx_str="$idx_str$step "
-        fi
+        ret=$(echo $($UCI -q show wireless.@wifi-config[$step].encryption) | grep -o "'.*'" | sed "s/'/\"/g")
+        auth_str="$auth_str$ret "
         step=$((step + 1))
     done
-    
-    echo $idx_str
+
+    echo $auth_str
 }
-
-
 
 Scan () {
     ret_str=""
-    local ret=$( $IWINFO radio0 scan | grep -o '".*"')
-
+    line=1
+    var=$(iwpriv ra0 get_site_survey | grep '^[0-9]' | sed -n "${line}p")
+    while [ "$var" != "" ]
+    do
+        var=$(iwpriv ra0 get_site_survey | grep '^[0-9]' | sed -n "${line}p")
+        if [ "$var" != "" ]; then
+            local ret="$ret"\""$(echo "${var:4:32}" | xargs)"\"" "
+        fi
+        line=$((line + 1))
+    done
     # SHOW CONFIGURED NETWORKS IF VERBOSE
     if [ $bVerbose == 1 ] ; then
         for word in $ret
@@ -189,7 +178,7 @@ Scan () {
             _Print $word
         done
     fi
-            
+
     echo $ret
 }
 
@@ -208,26 +197,14 @@ Get_conf_net_num () {
 
 
 Connect () {
-    net_index=$1
-    step=0
-    ret=$(echo $($UCI show -q wireless.@wifi-iface[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
-    while [ "$ret" != "" ]
-    do
-        mode=$(echo $($UCI -q show wireless.@wifi-iface[$step].mode) | grep -o "'.*'")
-        if [ "$mode" == 'ap' ]; then
-            ap_step=$step
-        fi
-        ret=$(echo $($UCI -q show wireless.@wifi-iface[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
-        if [ "$ret" != "" ]; then
-            if [ "$mode" == \'sta\' ]; then
-                res=$($UCI set wireless.@wifi-iface[$step].disabled=1)
-                $($UCI commit)
-            fi
-        fi
-        step=$((step + 1))
-    done
-    local ret=$($UCI set wireless.@wifi-iface[$net_index].disabled=0)
-    local ret=$($UCI set wireless.@wifi-iface[$ap_step].disabled=0)
+    net_ssid=$(echo "$1" | sed -e 's/^"//' -e 's/"$//')
+    net_key=$(echo "$2" | sed -e 's/^"//' -e 's/"$//')
+    net_auth=$(echo "$3" | sed -e 's/^"//' -e 's/"$//')
+
+    local ret=$($UCI set wireless.@wifi-iface[0].ApCliEnable=1)
+    local ret=$($UCI set wireless.@wifi-iface[0].ApCliSsid=$net_ssid)
+    local ret=$($UCI set wireless.@wifi-iface[0].ApCliPassWord=$net_key)
+    local ret=$($UCI set wireless.@wifi-iface[0].ApCliAuthMode=$net_auth)
     local ret=$($UCI commit)
 }
 
@@ -250,7 +227,9 @@ Check_connection() {
 
 Connection_loop () {
     configured_nets=$1
-    iwinfo_scans=$2
+    configured_key=$2
+    configured_auth=$3
+    iwinfo_scans=$4
     conf_net_num=$(Get_conf_net_num)   
     res=0
     count=1
@@ -259,15 +238,20 @@ Connection_loop () {
     do
         _Print " "
         _Print " "
+        _Print "Current Count: $count"
+        _Print "Number of configured nets: $conf_net_num"
         connection=$(Get_network "$configured_nets" $count)
-        index=$(Get_id "$index_nets" $count)
+        key=$(Get_network "$configured_key" $count)
+        authentication=$(Get_network "$configured_auth" $count)
         _Print " trying to connect to... $connection" 
         res=$(Compare_str "$connection" "$iwinfo_scans")
         if [ "$res" == 1 ]; then
-            $(Connect "$index")
-            _Print "Calling wifi interface..." 
-            $($WIFI)
+            $(Connect "$connection" "$key" "$authentication" )
+            local down=$($UBUS call network.interface.wwan down)
+            $(wifi &> /dev/null)
             sleep 10
+            local up=$($UBUS call network.interface.wwan up)
+            sleep 5
             checked=$(Check_connection)
             if [ $checked == 1 ]; then
                 res=0
@@ -277,10 +261,9 @@ Connection_loop () {
             _Print "$connection not found, trying other networks"
             count=$((count+1))
         fi
-        if [ $count == $conf_net_num ]; then
+        if [ "$count" -gt "$conf_net_num" ]; then
            _Print "ran out of configured networks... no station available"
-            count=$((count-1))
-            $($UCI set wireless.@wifi-iface[$count].disabled=1)
+            $($UCI set wireless.@wifi-iface[0].ApCliEnable=0)
             $($UCI commit)
             $($WIFI)
            break
@@ -299,16 +282,8 @@ Boot_init () {
             ap_step=$step
         fi
         ret=$(echo $($UCI -q show wireless.@wifi-iface[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
-        if [ "$ret" != "" ]; then
-            if [ "$mode" == "sta" ]; then
-                res=$($UCI set wireless.@wifi-iface[$step].disabled=1)
-                $($UCI commit)
-            fi
-        fi
         step=$((step + 1))
     done
-    $($WIFI)
-    sleep 10
 }
 
 ##########################################################
@@ -316,7 +291,7 @@ Boot_init () {
 Regular_Seq () {
 
     # CHECK THAT RADIO0 IS UP
-    init=$($IWINFO wlan0 scan)
+    init=$(iwpriv ra0 set SiteSurvey=1)
     ret=$(Wait)
     if [ "$ret" != "found" ]; then
         _Print "radio0 is not up... try again later"
@@ -330,7 +305,8 @@ Regular_Seq () {
     # READ CONFIGURED NETWORKS
     _Print "Reading configured networks in station mode..."
     configured_nets=$(Read)
-    index_nets=$(Read_idx)
+    configured_key=$(Read_key)
+    configured_auth=$(Read_auth)
     if [ "$configured_nets" == "" ]; then
         _Print "no configured station networks... aborting"
         if [ "$bTest" == 1 ]; then
@@ -354,15 +330,16 @@ Regular_Seq () {
 
     # CONNECT TO MATCHING NETWORKS
     _Print  ""  
-    $(Connection_loop "$configured_nets" "$iwinfo_scans")
+    $(Connection_loop "$configured_nets" "$configured_key" "$configured_auth" "$iwinfo_scans")
 
     _Print "Wifi manager finished"
 }
 
 Boot_Seq () {
+    # wait until ra0 is up
+
 
     # CHECK THAT radio0 IS UP
-    init=$($IWINFO wlan0 scan)
     ret=$(Wait)
     if [ "$ret" != "found" ]; then
         _Print "radio0 is not up... try again later with regular sequence"
@@ -390,7 +367,8 @@ Boot_Seq () {
     # READ CONFIGURED NETWORKS
     _Print "Reading configured networks in station mode..."
     configured_nets=$(Read)
-    index_nets=$(Read_idx)
+    configured_key=$(Read_key)
+    configured_auth=$(Read_auth)
     if [ "$configured_nets" == "" ]; then
         _Print "no configured station networks... aborting"
         if [ "$bTest" == 1 ]; then
@@ -415,9 +393,9 @@ Boot_Seq () {
 
     # CONNECT TO MATCHED NETWORKS
     _Print ""
-    $(Connection_loop "$ssid_str" "$iwinfo_scans" "idx_str")
+    $(Connection_loop "$configured_nets" "$configured_key" "$configured_auth" "$iwinfo_scans")
 
-    _Print "wifi manager finished"
+    _Print "Wifi manager finished"
 
 }
 
