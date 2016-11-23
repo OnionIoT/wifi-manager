@@ -329,10 +329,11 @@ Regular_Seq () {
     fi
 
     # CONNECT TO MATCHING NETWORKS
-    _Print  ""  
+    _Print  ""
     $(Connection_loop "$configured_nets" "$configured_key" "$configured_auth" "$iwinfo_scans")
 
     _Print "Wifi manager finished"
+    exit
 }
 
 Boot_Seq () {
@@ -353,15 +354,15 @@ Boot_Seq () {
     # INITIALIZE BY DISABLING ALL STATION NETWORKS AND RESET WIFI ADAPTER
     _Print ""
     _Print "initializing... disabling all station mode networks"
-    $(Boot_init)
+    # $(Boot_init)
     
 
     # WAIT FOR radio0 TO BE UP
-    ret=$(Wait)
-    if [ "$ret" != "found" ]; then
-        _Print "radio0 is not up... try again later with regular sequence"
-        exit
-    fi
+    # ret=$(Wait)
+    # if [ "$ret" != "found" ]; then
+    #     _Print "radio0 is not up... try again later with regular sequence"
+    #     exit
+    # fi
 
 
     # READ CONFIGURED NETWORKS
@@ -393,10 +394,10 @@ Boot_Seq () {
 
     # CONNECT TO MATCHED NETWORKS
     _Print ""
+
     $(Connection_loop "$configured_nets" "$configured_key" "$configured_auth" "$iwinfo_scans")
 
-    _Print "Wifi manager finished"
-
+    exit
 }
 
 # parse arguments
