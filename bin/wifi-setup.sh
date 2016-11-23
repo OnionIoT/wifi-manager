@@ -382,15 +382,15 @@ _SetNetworkPriority () {
 	## find the top priority
 	# find the ap network
 	local apId=$(_FindApNetwork)
-	local topPriority=0
+	local topPriority=1
 	
-	if [ $apId == -1 ]; then
-		# no AP network, top priority spot is 1 (radio0 is spot 0)
-		topPriority=1
-	else
-		# AP network present, top priority spot is 2 (radio0 is spot 0, AP is spot 1)
-		topPriority=2
-	fi
+	# if [ $apId == -1 ]; then
+	# 	# no AP network, top priority spot is 1 (radio0 is spot 0)
+	# 	topPriority=1
+	# else
+	# 	# AP network present, top priority spot is 2 (radio0 is spot 0, AP is spot 1)
+	# 	topPriority=2
+	# fi
 
 	## find the lowest priority
 	local bottomPriority=$(_FindNumNetworks)
@@ -928,15 +928,20 @@ if [ $id == -1 ]; then
 	_SetError
 fi
 
-if 	[ $bCmdAdd == 1 ] || 
-	[ $bCmdDisable == 1 ] ||
-	[ $bCmdEnable == 1 ] ||
-	[ $bCmdRemove == 1 ] ||
-	[ $bCmdPriority == 1 ];
-then
-	_Print "> Restarting wifimanager for changes to take effect" "status"
-	wifimanager &
+if [ $bError == 0 ]; then
+	if 	[ $bCmdAdd == 1 ] || 
+		[ $bCmdDisable == 1 ] ||
+		[ $bCmdEnable == 1 ] ||
+		[ $bCmdRemove == 1 ] ||
+		[ $bCmdPriority == 1 ];
+	then
+		_Print "> Restarting wifimanager for changes to take effect" "status"
+		wifimanager &
+	fi
+else
+	exit
 fi
+
 
 
 ## json finish
