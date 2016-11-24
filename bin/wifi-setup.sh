@@ -46,6 +46,7 @@ usage () {
 	_Print "  add "
 	_Print "Functionality: Add a new WiFi network to the Omega's settings"
 	_Print "Usage: $0 add -ssid <ssid> -encr <encryption type> -password <password>"
+	_Print "Valid encryption types [WPA2, WPA, WEP, NONE]"
 	_Print ""
 	_Print "  edit "
 	_Print "Functionality: Edit the information of a configured WiFi network"
@@ -225,10 +226,10 @@ _FindNetworkSsid () {
 #	modifies the global auth variable
 _NormalizeAuthInput () {
 	case "$auth" in
-		WPA1PSKWPA2PSK|WPA2PSK)
+		WPA1PSKWPA2PSK|WPA2PSK|wpa2|psk2)
 			auth="WPA2PSK"
 		;;
-		WPA1PSK)
+		WPA1PSK|wpa|psk)
 			auth="WPA1PSK"
 		;;
 		wep|WEP)
