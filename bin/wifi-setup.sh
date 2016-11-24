@@ -358,13 +358,13 @@ _ReorderWifiUciSection () {
 		if [ "$iface" == "wifi-config" ]; then
 			# print a message
 			if [ "$3" != "" ]; then
-				_Print "> Shifting '$ssid' priority to $3" "output"
+				_Print "> Shifting '$ssid' priority to $2" "output"
 			else
 				_Print "> Shifting '$ssid' priority" "output"
 			fi
 
 			# perform the reorder
-			uci reorder wireless.@wifi-config[$1]=$2
+			uci reorder wireless.@wifi-config[$1]=$3
 			uci commit wireless
 		fi
 	fi
@@ -404,7 +404,7 @@ _SetNetworkPriority () {
 	fi
 
 	## find the new human-readable priority
-	local hmnPriority=$(($desiredPriority - $topPriority + 1))
+	local hmnPriority=$(($desiredPriority + 1))
 
 	# check that shift is valid
 	if 	[ $desiredPriority -lt $topPriority ] ||
