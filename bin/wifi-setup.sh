@@ -279,13 +279,27 @@ _AddWifiUciSection () {
 	uci set wireless.@wifi-config[$id].ssid="$ssid"
 	uci set wireless.@wifi-config[$id].encryption="$auth"
 	uci set wireless.@wifi-iface[0].ApCliEnable="1"
+	keyLength=${#password}
 
 	# set the network key based on the authentication
 	case "$auth" in
 		WPA2PSK|WPA1PSK)
+			if [ "$keyLength" -lt 8 ] ||
+				[ "$keyLength" -gt 64 ]; then
+				_Print "> ERROR: Password length does not match encryption type" "error"
+				uci delete wireless.@wifi-config[$id]
+				bError=1
+				exit
+			fi
 			uci set wireless.@wifi-config[$id].key="$password"
 		;;
 		WEP)
+			if [ "$keyLength" -lt 5 ]; then
+				_Print "> ERROR: Password length does not match encryption type" "error"
+				uci delete wireless.@wifi-config[$id]
+				bError=1
+				exit
+			fi
 			uci set wireless.@wifi-config[$id].key=1
 			uci set wireless.@wifi-config[$id].key1="$password"
 		;;
