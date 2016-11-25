@@ -286,7 +286,7 @@ _AddWifiUciSection () {
 		WPA2PSK|WPA1PSK)
 			if [ "$keyLength" -lt 8 ] ||
 				[ "$keyLength" -gt 64 ]; then
-				_Print "> ERROR: Password length does not match encryption type" "error"
+				_Print "> ERROR: Password length does not match encryption type. WPA2 passwords must be between 8 and 64 characters." "error"
 				uci delete wireless.@wifi-config[$id]
 				bError=1
 				exit
@@ -295,7 +295,7 @@ _AddWifiUciSection () {
 		;;
 		WEP)
 			if [ "$keyLength" -lt 5 ]; then
-				_Print "> ERROR: Password length does not match encryption type" "error"
+				_Print "> ERROR: Password length does not match encryption type. Please enter a valid password." "error"
 				uci delete wireless.@wifi-config[$id]
 				bError=1
 				exit
