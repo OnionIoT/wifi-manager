@@ -226,10 +226,10 @@ _FindNetworkSsid () {
 #	modifies the global auth variable
 _NormalizeAuthInput () {
 	case "$auth" in
-		WPA1PSKWPA2PSK|WPA2PSK|wpa2|psk2)
+		WPA1PSKWPA2PSK|WPA2PSK|wpa2|psk2|WPA2|PSK2)
 			auth="WPA2PSK"
 		;;
-		WPA1PSK|wpa|psk)
+		WPA1PSK|wpa|psk|WPA|PSK)
 			auth="WPA1PSK"
 		;;
 		wep|WEP)
