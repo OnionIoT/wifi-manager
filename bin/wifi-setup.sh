@@ -217,9 +217,13 @@ _FindApNetwork () {
 #	returns value via echo
 #	$1	- network id
 _FindNetworkSsid () {
-	local name=$(uci -q get wireless.\@wifi-config[$1].ssid)
+	if [ $bApNetwork == 1 ]; then
+		local ssidName=$(uci -q get wireless.\@wifi-iface[$1].ssid)
+	else
+		local ssidName=$(uci -q get wireless.\@wifi-config[$1].ssid)
+	fi
 
-	echo $name
+	echo $ssidName
 }
 
 # Normalize the authentication input
@@ -275,43 +279,75 @@ _AddWifiUciSection () {
 	# 	uci set wireless.@wifi-iface[$id].network="wlan"
 	# fi 
 
-	# use UCI to set the ssid, encryption, and disabled options
-	uci set wireless.@wifi-config[$id].ssid="$ssid"
-	uci set wireless.@wifi-config[$id].encryption="$auth"
-	uci set wireless.@wifi-iface[0].ApCliEnable="1"
-	keyLength=${#password}
+	if [ $bApNetwork == 1 ]; then
+		# use UCI to set the ssid, encryption, and disabled options
 
-	# set the network key based on the authentication
-	case "$auth" in
-		WPA2PSK|WPA1PSK)
-			if [ "$keyLength" -lt 8 ] ||
-				[ "$keyLength" -gt 64 ]; then
-				_Print "> ERROR: Password length does not match encryption type. WPA2 passwords must be between 8 and 64 characters." "error"
-				uci delete wireless.@wifi-config[$id]
-				bError=1
-				exit
-			fi
-			uci set wireless.@wifi-config[$id].key="$password"
-		;;
-		WEP)
-			if [ "$keyLength" -lt 5 ]; then
-				_Print "> ERROR: Password length does not match encryption type. Please enter a valid password." "error"
-				uci delete wireless.@wifi-config[$id]
-				bError=1
-				exit
-			fi
-			uci set wireless.@wifi-config[$id].key=1
-			uci set wireless.@wifi-config[$id].key1="$password"
-		;;
-		none|*)
-			# set no keys for open networks, delete any existing ones
-			local key=$(uci -q get wireless.\@wifi-config[$id].key)
+		if [ "$ssid" != "" ]; then
+			uci set wireless.@wifi-iface[0].ssid="$ssid"
+		else
+			ssid=$(uci get wireless.@wifi-iface[0].ssid)
+			uci set wireless.@wifi-iface[0].ssid="$ssid"
+		fi
+		if [ "$auth" != "" ]; then
+			uci set wireless.@wifi-iface[0].encryption="$auth"
+		else
+			auth=$(uci get wireless.@wifi-iface[0].encryption)
+			uci set wireless.@wifi-iface[0].encryption="$auth"
+		fi
+		if [ "$password" != "" ] || 
+			[ "$auth" == "NONE" ]; then
+			uci set wireless.@wifi-iface[0].key="$password"
+		else
+			password=$(uci get wireless.@wifi-iface[0].key)
+			uci set wireless.@wifi-iface[0].key="$password"
+		fi
 
-			if [ "$key" != "" ]; then
-				uci delete wireless.@wifi-config[$id].key
-			fi
-		;;
-	esac
+		uci set wireless.@wifi-iface[0].ApCliEnable="1"
+
+		
+
+
+	else
+		# use UCI to set the ssid, encryption, and disabled options
+			uci set wireless.@wifi-config[$id].ssid="$ssid"
+			uci set wireless.@wifi-config[$id].encryption="$auth"
+			uci set wireless.@wifi-iface[0].ApCliEnable="1"
+			keyLength=${#password}
+
+			# set the network key based on the authentication
+			case "$auth" in
+				WPA2PSK|WPA1PSK)
+					if [ "$keyLength" -lt 8 ] ||
+						[ "$keyLength" -gt 64 ]; then
+						_Print "> ERROR: Password length does not match encryption type. WPA2 passwords must be between 8 and 64 characters." "error"
+						uci delete wireless.@wifi-config[$id]
+						bError=1
+						exit
+					fi
+					uci set wireless.@wifi-config[$id].key="$password"
+				;;
+				WEP)
+					if [ "$keyLength" -lt 5 ]; then
+						_Print "> ERROR: Password length does not match encryption type. Please enter a valid password." "error"
+						uci delete wireless.@wifi-config[$id]
+						bError=1
+						exit
+					fi
+					uci set wireless.@wifi-config[$id].key=1
+					uci set wireless.@wifi-config[$id].key1="$password"
+				;;
+				none|*)
+					# set no keys for open networks, delete any existing ones
+					local key=$(uci -q get wireless.\@wifi-config[$id].key)
+
+					if [ "$key" != "" ]; then
+						uci delete wireless.@wifi-config[$id].key
+					fi
+				;;
+			esac
+	fi
+
+	
 
 
 	# commit the changes
