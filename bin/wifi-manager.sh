@@ -202,25 +202,33 @@ Connect () {
     net_auth=$(echo "$3" | sed -e 's/^"//' -e 's/"$//')
 
     local ret=$($UCI set wireless.@wifi-iface[0].ApCliEnable=1)
-    local ret=$($UCI set wireless.@wifi-iface[0].ApCliSsid=$net_ssid)
-    local ret=$($UCI set wireless.@wifi-iface[0].ApCliPassWord=$net_key)
-    local ret=$($UCI set wireless.@wifi-iface[0].ApCliAuthMode=$net_auth)
-    local ret=$($UCI commit)
+    local ret=$($UCI set wireless.@wifi-iface[0].ApCliSsid="$net_ssid")
+    local ret=$($UCI set wireless.@wifi-iface[0].ApCliPassWord="$net_key")
+    local ret=$($UCI set wireless.@wifi-iface[0].ApCliAuthMode="$net_auth")
+    local ret=$($UCI commit wireless)
 }
 
 
 Check_connection() {
-    local ret=$($UBUS call network.interface.wwan status | grep \"up\" | grep -o ' .*,')
-    _Print " wwan network is set up... $ret"
-    if [ $bTest == 1 ]; then
-        echo  " $ret " >> $TEST_OUT
-    fi
-    echo $ret | grep -q "true" && res="found"
-    if [ "$res" == "found" ]; then
-        ret=0
-    else
-        ret=1
-    fi
+    checkcount=0
+    checkflag=0
+    while [ "$checkcount" -le 10 ] &&
+        [ "$checkflag" == 0 ]; do
+        local ret=$($UBUS call network.interface.wwan status | grep \"up\" | grep -o ' .*,')
+        _Print " wwan network is set up... $ret"
+        if [ $bTest == 1 ]; then
+            echo  " $ret " >> $TEST_OUT
+        fi
+        echo $ret | grep -q "true" && res="found"
+        if [ "$res" == "found" ]; then
+            ret=0
+            checkflag=1
+        else
+            ret=1
+        fi
+        sleep 1
+        checkcount=$((checkcount + 1))
+    done
     echo $ret
 }
 
