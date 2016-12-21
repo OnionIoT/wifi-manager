@@ -513,7 +513,8 @@ _JsonListUciNetworks () {
 
 	# print the json
 	if [ $bJson == 0 ]; then
-		json_dump
+		json_dump | sed 's/,/,\n       /g' | sed 's/{ "/{\n\n        "/g' | sed 's/}/\n\}/g' | sed 's/\[/\[\n/g' | sed 's/\]/\n\]/g'
+
 	fi
 }
 
