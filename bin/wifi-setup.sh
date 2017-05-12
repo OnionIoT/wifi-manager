@@ -252,6 +252,7 @@ _AddWifiUciSection () {
 	local commit=1
 	local id=$1
 	local auth=$2
+    local encrypt=$3
 	local bNew=0
 	
 
@@ -294,10 +295,21 @@ _AddWifiUciSection () {
 			auth=$(uci get wireless.@wifi-iface[0].encryption)
 			uci set wireless.@wifi-iface[0].encryption="$auth"
 		fi
+        # encryption type
+        # auth and encryption variable names are switched in ubus wifi scan
+        if [ "$encrypt" != "" ]; then
+            uci set wireless.@wifi-iface[0].authentication="$encrypt"
+        else
+			encrypt=$(uci get wireless.@wifi-iface[0].authentication)
+			uci set wireless.@wifi-iface[0].encryption="$auth"
+		fi
+        
+        # password
 		if [ "$password" != "" ] || 
-			[ "$auth" == "NONE" ]; then
+			[ "$auth" != "NONE" ]; then
 			uci set wireless.@wifi-iface[0].key="$password"
 		else
+            # remove password
 			password=$(uci get wireless.@wifi-iface[0].key)
 			uci set wireless.@wifi-iface[0].key="$password"
 		fi
@@ -636,9 +648,14 @@ _UserInputJsonReadNetworkAuth () {
 		else
 			auth="$auth_type"
 		fi
+        
+        # read the encryption type value into variable "encrypt"
+        # yes they are backwards, they match the ubus wifi scan mappings
+        json_get_var encrypt authentication
 	else
-		# no encryption, open network
+		# no authentication, so no encryption: open network
 		auth="NONE"
+        encrypt="NONE"
 	fi
 }
 
@@ -729,10 +746,13 @@ _UserInputScanWifi () {
 		fi
 		echo "Network: $ssid"
 
-		# detect the encryption type 
+		# detect the authentication type 
 		_UserInputJsonReadNetworkAuth "$input"
 
 		echo "Authentication type: $auth"
+        
+        # print encryption type
+        echo "Encryption type: $encrypt"
 	else
 		wifi
 		bScanFailed=1

@@ -19,7 +19,7 @@ WIFI="/sbin/wifi"
 bUsage=0
 bBoot=0
 bVerbose=0
-bTest=0
+bTest=1
 
 
 # output files if necessary
@@ -159,6 +159,25 @@ Read_auth () {
     echo $auth_str
 }
 
+# create a space-separated string of configuration option values
+# all options are enclosed in quotes
+Read_encrypt () {
+    local i=0
+    local prop_str=""
+    local new_prop="nonempty" # just needs to be any nonempty value for first pass
+    # there's gotta be a better way of doing this, but I'm getting this to work first
+
+    # build the string of props
+    while [ "$new_prop" != "" ]
+    do
+        new_prop=\"$(echo $($UCI -q get wireless.@wifi-config[$i].authentication))\"     # get the option of the i'th wifi config; yes, authentication and encryption are backwards
+        prop_str="$prop_str$new_prop "
+        i=$((i + 1))
+    done
+
+    echo $prop_str
+}
+
 Scan () {
     ret_str=""
     line=1
@@ -195,17 +214,39 @@ Get_conf_net_num () {
     echo $((count-1))
 }
 
-
+# set ApCli options for connecting to wifi
 Connect () {
     net_ssid=$(echo "$1" | sed -e 's/^"//' -e 's/"$//')
     net_key=$(echo "$2" | sed -e 's/^"//' -e 's/"$//')
     net_auth=$(echo "$3" | sed -e 's/^"//' -e 's/"$//')
-
+    net_encrypt=$(echo "$4" | sed -e 's/^"//' -e 's/"$//')
+    
+    # if no authentication, get rid of any (previously saved) authentication data
+    if [ $net_auth == “NONE” ]
+        local ret=$($UCI delete wireless.@wifi-iface[0].ApCliPassWord)
+        local ret=$($UCI delete wireless.@wifi-iface[0].ApCliAuthmode)
+        local ret=$($UCI delete wireless.@wifi-iface[0].ApCliEncrypType)
+    else # otherwise add it back in
+        local ret=$($UCI set wireless.@wifi-iface[0].ApCliPassWord="$net_key")
+        local ret=$($UCI set wireless.@wifi-iface[0].ApCliAuthMode="$net_auth")
+        # for old configs, encryption type may not be specified
+        # if not specified, assume AES
+        if [ $net_encrypt == "" ]
+            local ret=$($UCI set wireless.@wifi-iface[0].ApCliEncrypType="AES")
+        else
+            local ret=$($UCI set wireless.@wifi-iface[0].ApCliEncrypType="$net_encrypt")
+        fi
+    fi
+    # enable the ap
     local ret=$($UCI set wireless.@wifi-iface[0].ApCliEnable=1)
-    local ret=$($UCI set wireless.@wifi-iface[0].ApCliSsid="$net_ssid")
-    local ret=$($UCI set wireless.@wifi-iface[0].ApCliPassWord="$net_key")
-    local ret=$($UCI set wireless.@wifi-iface[0].ApCliAuthMode="$net_auth")
+    # commit these changes
     local ret=$($UCI commit wireless)
+
+    # local ret=$($UCI set wireless.@wifi-iface[0].ApCliEnable=1)
+    # local ret=$($UCI set wireless.@wifi-iface[0].ApCliSsid="$net_ssid")
+    # local ret=$($UCI set wireless.@wifi-iface[0].ApCliPassWord="$net_key")
+    # local ret=$($UCI set wireless.@wifi-iface[0].ApCliAuthMode="$net_auth")
+    # local ret=$($UCI commit wireless)
 }
 
 
@@ -237,7 +278,8 @@ Connection_loop () {
     configured_nets=$1
     configured_key=$2
     configured_auth=$3
-    iwinfo_scans=$4
+    configured_encrypt=$4
+    iwinfo_scans=$5
     conf_net_num=$(Get_conf_net_num)   
     res=0
     count=1
@@ -251,6 +293,8 @@ Connection_loop () {
         connection=$(Get_network "$configured_nets" $count)
         key=$(Get_network "$configured_key" $count)
         authentication=$(Get_network "$configured_auth" $count)
+        # encryption type
+        encryption=$(Get_network "$configured_encrypt" $count)
         _Print " trying to connect to... $connection" 
         res=$(Compare_str "$connection" "$iwinfo_scans")
         if [ "$res" == 1 ]; then
@@ -315,6 +359,8 @@ Regular_Seq () {
     configured_nets=$(Read)
     configured_key=$(Read_key)
     configured_auth=$(Read_auth)
+    # add encryption type
+    configured_encrypt=$(Read_encrypt)
     if [ "$configured_nets" == "" ]; then
         _Print "no configured station networks... aborting"
         if [ "$bTest" == 1 ]; then
@@ -338,7 +384,7 @@ Regular_Seq () {
 
     # CONNECT TO MATCHING NETWORKS
     _Print  ""
-    $(Connection_loop "$configured_nets" "$configured_key" "$configured_auth" "$iwinfo_scans")
+    $(Connection_loop "$configured_nets" "$configured_key" "$configured_auth" "$configured_encrypt" "$iwinfo_scans")
 
     _Print "Wifi manager finished"
     exit
@@ -346,9 +392,8 @@ Regular_Seq () {
 
 Boot_Seq () {
     # wait until ra0 is up
-
-
     # CHECK THAT radio0 IS UP
+    
     ret=$(Wait)
     if [ "$ret" != "found" ]; then
         _Print "radio0 is not up... try again later with regular sequence"
@@ -378,6 +423,7 @@ Boot_Seq () {
     configured_nets=$(Read)
     configured_key=$(Read_key)
     configured_auth=$(Read_auth)
+    configured_encrypt=$(Read_encrypt)
     if [ "$configured_nets" == "" ]; then
         _Print "no configured station networks... aborting"
         if [ "$bTest" == 1 ]; then
@@ -399,11 +445,9 @@ Boot_Seq () {
         exit
     fi
 
-
     # CONNECT TO MATCHED NETWORKS
     _Print ""
-
-    $(Connection_loop "$configured_nets" "$configured_key" "$configured_auth" "$iwinfo_scans")
+    $(Connection_loop "$configured_nets" "$configured_key" "$configured_auth" "$configured_encrypt" "$iwinfo_scans")
 
     exit
 }
