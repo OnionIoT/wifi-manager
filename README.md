@@ -17,3 +17,9 @@ needs following packages installed:
 # NOTE 
 some parts of the script are hard coded... 
 only works on Omega-1E47 at the moment.
+
+## Testing Functions
+
+```
+ubus call onion wifi-scan '{"device":"ra0"}'
+```
