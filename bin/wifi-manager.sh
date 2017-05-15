@@ -110,10 +110,21 @@ Wait () {
     echo $res
 }
 
+# Read a particular uci configuration option
+# return nothing if it does not exist
+# meant for building a space-separated list of quote-enclosed values
+# eg. if wireless. \"AES\" 
+Read_option () {
+    _Print "Entering Read_option"
+    local option=$1
+    _Print "option: $option"
+    echo $($UCI -q show $option | grep -o "'.*'" | sed "s/'/\"/g")
+}
+
 Read () {
     step=0
     ssid_str=""
-    ret=$(echo $($UCI -q show wireless.@wifi-config[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")    
+    ret=$(echo $($UCI -q show wireless.@wifi-config[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g") 
     while [ "$ret" != "" ]
     do
         ret=$(echo $($UCI -q show wireless.@wifi-config[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
@@ -163,14 +174,17 @@ Read_auth () {
 # create a space-separated string of configuration option values
 # all options are enclosed in quotes
 Read_encrypt () {
+    _Print "Entering Read_encrypt function." # debug
     local i=0
     local prop_str=""
     local new_prop="nonempty" # just needs to be any nonempty value for first pass
     
     # build the string of props
+    _Print "Building property string." # debug
     while [ "$new_prop" != "" ]
     do
-        new_prop=\"$($UCI -q get wireless.@wifi-config[$i].authentication)\" # get the option of the i'th wifi config
+        new_prop=$(Read_option "wireless.@wifi-config[$i].authentication") # get the option of the i'th wifi config
+        _Print "new_prop: $new_prop" # debug
         prop_str="$prop_str$new_prop "
         i=$((i + 1))
     done
@@ -241,12 +255,13 @@ Connect () {
         fi
     fi
     # enable the ap
+    local ret=$($UCI set wireless.@wifi-iface[0].ApCliSsid="$net_ssid")
     local ret=$($UCI set wireless.@wifi-iface[0].ApCliEnable=1)
     # commit these changes
     local ret=$($UCI commit wireless)
 
     # local ret=$($UCI set wireless.@wifi-iface[0].ApCliEnable=1)
-    # local ret=$($UCI set wireless.@wifi-iface[0].ApCliSsid="$net_ssid")
+    
     # local ret=$($UCI set wireless.@wifi-iface[0].ApCliPassWord="$net_key")
     # local ret=$($UCI set wireless.@wifi-iface[0].ApCliAuthMode="$net_auth")
     # local ret=$($UCI commit wireless)
@@ -299,9 +314,10 @@ Connection_loop () {
         # encryption type
         encryption=$(Get_network "$configured_encrypt" $count)
         _Print " trying to connect to... $connection" 
+        _Print " iwinfo_scans: $iwinfo_scans" # debug
         res=$(Compare_str "$connection" "$iwinfo_scans")
         if [ "$res" == 1 ]; then
-            $(Connect "$connection" "$key" "$authentication" )
+            $(Connect "$connection" "$key" "$authentication" "$encryption")
             local down=$($UBUS call network.interface.wwan down)
             $(wifi &> /dev/null)
             sleep 10
