@@ -26,6 +26,9 @@ bCmdInfo=0
 bApNetwork=0
 
 
+# other settings
+DEFAULTENCRYPTION='AES'
+
 #############################
 ##### Print Usage ###########
 usage () {
@@ -290,20 +293,11 @@ _AddWifiUciSection () {
 			uci set wireless.@wifi-iface[0].ssid="$ssid"
 		fi
 		if [ "$auth" != "" ]; then
+            # switch the config option names later once fixed onion-ubus is ready to be deployed
 			uci set wireless.@wifi-iface[0].encryption="$auth"
-		else
-			auth=$(uci get wireless.@wifi-iface[0].encryption)
-			uci set wireless.@wifi-iface[0].encryption="$auth"
-		fi
-        # encryption type
-        # auth and encryption variable names are switched in ubus wifi scan
-        if [ "$encrypt" != "" ]; then
             uci set wireless.@wifi-iface[0].authentication="$encrypt"
-        else
-			encrypt=$(uci get wireless.@wifi-iface[0].authentication)
-			uci set wireless.@wifi-iface[0].encryption="$auth"
 		fi
-        
+            
         # password
 		if [ "$password" != "" ] || 
 			[ "$auth" != "NONE" ]; then
@@ -322,7 +316,9 @@ _AddWifiUciSection () {
 	else
 		# use UCI to set the ssid, encryption, and disabled options
 			uci set wireless.@wifi-config[$id].ssid="$ssid"
-			uci set wireless.@wifi-config[$id].encryption="$auth"
+            # switch the below 2 option names when fixed onion-ubus is deployed
+            uci set wireless.@wifi-config[$id].encryption="$auth"
+			uci set wireless.@wifi-config[$id].authentication="AES"      # assume AES
 			uci set wireless.@wifi-iface[0].ApCliEnable="1"
 			keyLength=${#password}
 
@@ -501,6 +497,7 @@ _JsonListUciNetworks () {
 		local ssidRd=$(uci -q get wireless.\@wifi-config[$count].ssid)
 		# local modeRd=$(uci -q get wireless.\@wifi-config[$count].mode)
 		local encrRd=$(uci -q get wireless.\@wifi-config[$count].encryption)
+        local authRd=$(uci -q get wireless.\@wifi-config[$count].authentication)
 		local passwordRd=$(uci -q get wireless.\@wifi-config[$count].key)
 		
 		if [ "$encrRd" == "wep" ]; then
@@ -511,6 +508,7 @@ _JsonListUciNetworks () {
 		json_add_object
 		json_add_string "ssid" "$ssidRd"
 		json_add_string "encryption" "$encrRd"
+        json_add_string "authentication" "$authRd"
 		json_add_string "password" "$passwordRd"
 		# json_add_string "mode" "$modeRd"
 		json_close_object
@@ -549,6 +547,7 @@ _JsonUciNetworkInfo () {
 		local ssidRd=$(uci -q get wireless.\@wifi-config[$id].ssid)
 		local modeRd=$(uci -q get wireless.\@wifi-config[$id].mode)
 		local encrRd=$(uci -q get wireless.\@wifi-config[$id].encryption)
+        local authRd=$(uci -q get wireless.\@wifi-config[$id].authentication)
 		local passwordRd=$(uci -q get wireless.\@wifi-config[$id].key)
 		
 		if [ "$encrRd" == "wep" ]; then
@@ -559,6 +558,7 @@ _JsonUciNetworkInfo () {
 		json_add_boolean "success" 1
 		json_add_string "ssid" "$ssidRd"
 		json_add_string "encryption" "$encrRd"
+        json_add_string "authentication" "$authRd"
 		json_add_string "password" "$passwordRd"
 		# json_add_string "mode" "$modeRd"
 		
@@ -661,6 +661,7 @@ _UserInputJsonReadNetworkAuth () {
 
 # manually read network authentication from user
 _UserInputReadNetworkAuth () {
+    # present user with authentication options
 	echo ""
 	echo "Select network authentication type:"
 	echo "1) WPA2"
@@ -671,19 +672,24 @@ _UserInputReadNetworkAuth () {
 	echo -n "Selection: "
 	read input
 	
-
+    
+    # assume default encryption type for all authentication modes
 	case "$input" in
     	1)
 			auth="WPA2PSK"
+            encrypt="$DEFAULTENCRYPTION"
 	    ;;
 	    2)
 			auth="WPA1PSK"
+            encrypt="$DEFAULTENCRYPTION"
 	    ;;
 	    3)
 			auth="WEP"
+            encrypt="$DEFAULTENCRYPTION"
 	    ;;
-	    4)
+	    4)  # no authentication, no encryption
 			auth="NONE"
+            encrypt="NONE"
 	    ;;
 	esac
 
@@ -948,7 +954,7 @@ if [ $bCmdAdd == 1 ]; then
 	fi
 
 	# add or edit the uci entry
-	_AddWifiUciSection $id $auth
+	_AddWifiUciSection $id $auth $encrypt
 
 	# set new AP networks to top in list
 	if [ $bApNetwork == 1 ]; then

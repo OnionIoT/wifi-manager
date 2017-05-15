@@ -24,13 +24,14 @@ bTest=1
 
 # output files if necessary
 TEST_OUT=/root/int_tmp_test.txt
+TEST_OUT_TMP=/tmp/wifimanager_log.txt
 
 _Print () {
     if [ $bVerbose == 1 ]; then
         echo $1 >&2
     fi
     if [ $bTest == 1 ]; then
-        echo $1 >> tmp_test.txt
+        echo $1 >> $TEST_OUT_TMP
     fi
 }
 
@@ -165,16 +166,17 @@ Read_encrypt () {
     local i=0
     local prop_str=""
     local new_prop="nonempty" # just needs to be any nonempty value for first pass
-    # there's gotta be a better way of doing this, but I'm getting this to work first
-
+    
     # build the string of props
     while [ "$new_prop" != "" ]
     do
-        new_prop=\"$(echo $($UCI -q get wireless.@wifi-config[$i].authentication))\"     # get the option of the i'th wifi config; yes, authentication and encryption are backwards
+        new_prop=\"$($UCI -q get wireless.@wifi-config[$i].authentication)\" # get the option of the i'th wifi config
         prop_str="$prop_str$new_prop "
         i=$((i + 1))
     done
 
+    # debug
+    _Print "Network encryption list: $prop_str"
     echo $prop_str
 }
 
@@ -222,7 +224,8 @@ Connect () {
     net_encrypt=$(echo "$4" | sed -e 's/^"//' -e 's/"$//')
     
     # if no authentication, get rid of any (previously saved) authentication data
-    if [ $net_auth == “NONE” ]
+    if [ $net_auth == 'NONE' ]
+    then
         local ret=$($UCI delete wireless.@wifi-iface[0].ApCliPassWord)
         local ret=$($UCI delete wireless.@wifi-iface[0].ApCliAuthmode)
         local ret=$($UCI delete wireless.@wifi-iface[0].ApCliEncrypType)
@@ -231,7 +234,7 @@ Connect () {
         local ret=$($UCI set wireless.@wifi-iface[0].ApCliAuthMode="$net_auth")
         # for old configs, encryption type may not be specified
         # if not specified, assume AES
-        if [ $net_encrypt == "" ]
+        if [ $net_encrypt == "" ] ; then
             local ret=$($UCI set wireless.@wifi-iface[0].ApCliEncrypType="AES")
         else
             local ret=$($UCI set wireless.@wifi-iface[0].ApCliEncrypType="$net_encrypt")
@@ -421,8 +424,11 @@ Boot_Seq () {
     # READ CONFIGURED NETWORKS
     _Print "Reading configured networks in station mode..."
     configured_nets=$(Read)
+    _Print "Reading network password."
     configured_key=$(Read_key)
+    _Print "Reading authorization type."
     configured_auth=$(Read_auth)
+    _Print "Reading encryption type."
     configured_encrypt=$(Read_encrypt)
     if [ "$configured_nets" == "" ]; then
         _Print "no configured station networks... aborting"
