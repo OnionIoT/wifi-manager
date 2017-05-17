@@ -124,7 +124,7 @@ Read_option () {
 Read () {
     step=0
     ssid_str=""
-    ret=$(echo $($UCI -q show wireless.@wifi-config[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g") 
+    ret="nonempty"
     while [ "$ret" != "" ]
     do
         ret=$(echo $($UCI -q show wireless.@wifi-config[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
@@ -145,7 +145,7 @@ Read () {
 Read_key () {
     step=0
     key_str=""
-    ret=$(echo $($UCI -q show wireless.@wifi-config[$step].key) | grep -o "'.*'" | sed "s/'/\"/g")
+    ret="nonempty"
     while [ "$ret" != "" ]
     do
         ret=$(echo $($UCI -q show wireless.@wifi-config[$step].key) | grep -o "'.*'" | sed "s/'/\"/g")
@@ -237,6 +237,8 @@ Connect () {
     net_auth=$(echo "$3" | sed -e 's/^"//' -e 's/"$//')
     net_encrypt=$(echo "$4" | sed -e 's/^"//' -e 's/"$//')
     
+    _Print "net_auth: $net_auth"
+    
     # if no authentication, get rid of any (previously saved) authentication data
     if [ $net_auth == 'NONE' ]
     then
@@ -302,17 +304,31 @@ Connection_loop () {
     res=0
     count=1
     conn_net=""
+    
+    _Print "configured_nets: $configured_nets"
+    _Print "configured_key: $configured_key"
+    _Print "configured_auth: $configured_auth"
+    _Print "configured_encrypt: $configured_encrypt"
+    
     while [ "$res" == 0 ]
     do
         _Print " "
         _Print " "
         _Print "Current Count: $count"
         _Print "Number of configured nets: $conf_net_num"
+        _Print "Reading ssid."
         connection=$(Get_network "$configured_nets" $count)
+        _Print "ssid: $connection"
+        _Print "Reading key."
         key=$(Get_network "$configured_key" $count)
+        _Print "key: $key"
+        _Print "Reading auth type."
         authentication=$(Get_network "$configured_auth" $count)
+        _Print "auth: $authentication"
         # encryption type
+        _Print "Reading encryption type."
         encryption=$(Get_network "$configured_encrypt" $count)
+        _Print "encryption: $encryption"
         _Print " trying to connect to... $connection" 
         _Print " iwinfo_scans: $iwinfo_scans" # debug
         res=$(Compare_str "$connection" "$iwinfo_scans")
@@ -359,63 +375,65 @@ Boot_init () {
 
 ##########################################################
 ##########################################################
-Regular_Seq () {
+# Regular_Seq () {
+# 
+#     # CHECK THAT RADIO0 IS UP
+#     init=$(iwpriv ra0 set SiteSurvey=1)
+#     ret=$(Wait)
+#     if [ "$ret" != "found" ]; then
+#         _Print "radio0 is not up... try again later"
+#         if [ $bTest == 1 ]; then
+#             echo "radio0 not up, aborting" >> $TEST_OUT
+#         fi
+#         exit
+#     fi
+# 
+# 
+#     # READ CONFIGURED NETWORKS
+#     _Print "Reading configured networks in station mode..."
+#     configured_nets=$(Read)
+#     configured_key=$(Read_key)
+#     configured_auth=$(Read_auth)
+#     # add encryption type
+#     configured_encrypt=$(Read_encrypt)
+#     if [ "$configured_nets" == "" ]; then
+#         _Print "no configured station networks... aborting"
+#         if [ "$bTest" == 1 ]; then
+#             echo "no configured networks" >> $TEST_OUT
+#         fi
+#         exit
+#     fi
+# 
+# 
+#     # SCAN NEARBY NETWORKS  
+#     _Print ""
+#     _Print "Scanning nearby networks..."
+#     iwinfo_scans=$(Scan)
+#     if [ "$iwinfo_scans" == "" ]; then
+#         _Print "no nearby networks... aborting"
+#         if [ "$bTest" == 1 ]; then
+#             echo "no scanned networks" >> $TEST_OUT
+#         fi
+#         exit 
+#     fi
+# 
+#     # CONNECT TO MATCHING NETWORKS
+#     _Print  ""
+#     $(Connection_loop "$configured_nets" "$configured_key" "$configured_auth" "$configured_encrypt" "$iwinfo_scans")
+# 
+#     _Print "Wifi manager finished"
+#     exit
+# }
 
-    # CHECK THAT RADIO0 IS UP
-    init=$(iwpriv ra0 set SiteSurvey=1)
-    ret=$(Wait)
-    if [ "$ret" != "found" ]; then
-        _Print "radio0 is not up... try again later"
-        if [ $bTest == 1 ]; then
-            echo "radio0 not up, aborting" >> $TEST_OUT
-        fi
-        exit
-    fi
-
-
-    # READ CONFIGURED NETWORKS
-    _Print "Reading configured networks in station mode..."
-    configured_nets=$(Read)
-    configured_key=$(Read_key)
-    configured_auth=$(Read_auth)
-    # add encryption type
-    configured_encrypt=$(Read_encrypt)
-    if [ "$configured_nets" == "" ]; then
-        _Print "no configured station networks... aborting"
-        if [ "$bTest" == 1 ]; then
-            echo "no configured networks" >> $TEST_OUT
-        fi
-        exit
-    fi
-
-
-    # SCAN NEARBY NETWORKS  
-    _Print ""
-    _Print "Scanning nearby networks..."
-    iwinfo_scans=$(Scan)
-    if [ "$iwinfo_scans" == "" ]; then
-        _Print "no nearby networks... aborting"
-        if [ "$bTest" == 1 ]; then
-            echo "no scanned networks" >> $TEST_OUT
-        fi
-        exit 
-    fi
-
-    # CONNECT TO MATCHING NETWORKS
-    _Print  ""
-    $(Connection_loop "$configured_nets" "$configured_key" "$configured_auth" "$configured_encrypt" "$iwinfo_scans")
-
-    _Print "Wifi manager finished"
-    exit
-}
-
-Boot_Seq () {
+# formerly Boot_Seq
+# This and Regular_Seq were functionally equivalent save for the iwpriv set SiteSurvey line, so they've been combined into Main_Seq
+Main_Seq () {
     # wait until ra0 is up
     # CHECK THAT radio0 IS UP
     
     ret=$(Wait)
     if [ "$ret" != "found" ]; then
-        _Print "radio0 is not up... try again later with regular sequence"
+        _Print "radio0 is not up... try again later"
         if [ $bTest == 1 ]; then
             echo "radio0 not up, aborting" >> $TEST_OUT
         fi
@@ -424,8 +442,8 @@ Boot_Seq () {
 
 
     # INITIALIZE BY DISABLING ALL STATION NETWORKS AND RESET WIFI ADAPTER
-    _Print ""
-    _Print "initializing... disabling all station mode networks"
+    # _Print ""
+    # _Print "initializing... disabling all station mode networks"
     # $(Boot_init)
     
 
@@ -509,8 +527,9 @@ if [ $bUsage == 1 ]; then
 fi
 
 if [ $bBoot == 1 ]; then
-    Boot_Seq
+    Main_Seq
 else
-    Regular_Seq
+    init=$(iwpriv ra0 set SiteSurvey=1) # start scanning for nearby wifi networks
+    Main_Seq
 fi
 

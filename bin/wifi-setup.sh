@@ -318,7 +318,11 @@ _AddWifiUciSection () {
 			uci set wireless.@wifi-config[$id].ssid="$ssid"
             # switch the below 2 option names when fixed onion-ubus is deployed
             uci set wireless.@wifi-config[$id].encryption="$auth"
-			uci set wireless.@wifi-config[$id].authentication="AES"      # assume AES
+            if [ "$auth" == "NONE"]; then
+                uci set wireless.@wifi-config[$id].authentication="NONE"
+            else
+                uci set wireless.@wifi-config[$id].authentication="AES" # assume AES
+            fi
 			uci set wireless.@wifi-iface[0].ApCliEnable="1"
 			keyLength=${#password}
 
