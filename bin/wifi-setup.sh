@@ -318,7 +318,7 @@ _AddWifiUciSection () {
 			uci set wireless.@wifi-config[$id].ssid="$ssid"
             # switch the below 2 option names when fixed onion-ubus is deployed
             uci set wireless.@wifi-config[$id].encryption="$auth"
-            if [ "$auth" == "NONE"]; then
+            if [ "$auth" == "NONE" ]; then
                 uci set wireless.@wifi-config[$id].authentication="NONE"
             else
                 uci set wireless.@wifi-config[$id].authentication="AES" # assume AES
@@ -333,6 +333,7 @@ _AddWifiUciSection () {
 						[ "$keyLength" -gt 64 ]; then
 						_Print "> ERROR: Password length does not match encryption type. WPA2 passwords must be between 8 and 64 characters." "error"
 						uci delete wireless.@wifi-config[$id]
+                        # does this not need a uci commit wireless here?
 						bError=1
 						exit
 					fi
@@ -349,12 +350,16 @@ _AddWifiUciSection () {
 					uci set wireless.@wifi-config[$id].key1="$password"
 				;;
 				none|*)
-					# set no keys for open networks, delete any existing ones
-					local key=$(uci -q get wireless.\@wifi-config[$id].key)
-
-					if [ "$key" != "" ]; then
-						uci delete wireless.@wifi-config[$id].key
-					fi
+					# # set no keys for open networks, delete any existing ones
+					# local key=$(uci -q get wireless.\@wifi-config[$id].key)
+                    # 
+					# if [ "$key" != "" ]; then
+					# 	uci delete wireless.@wifi-config[$id].key
+					# fi
+                    
+                    # add a 'NONE' value as a placeholder for open networks
+                    # the config parser in wifimanager expects non-empty values for existing configurations
+                    uci set wireless.@wifi-config[$id].key='NONE'
 				;;
 			esac
 	fi

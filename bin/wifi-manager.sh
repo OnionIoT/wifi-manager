@@ -242,8 +242,9 @@ Connect () {
     # if no authentication, get rid of any (previously saved) authentication data
     if [ $net_auth == 'NONE' ]
     then
+        _Print "Deleting ApCli protection credentials."
         local ret=$($UCI delete wireless.@wifi-iface[0].ApCliPassWord)
-        local ret=$($UCI delete wireless.@wifi-iface[0].ApCliAuthmode)
+        local ret=$($UCI delete wireless.@wifi-iface[0].ApCliAuthMode)
         local ret=$($UCI delete wireless.@wifi-iface[0].ApCliEncrypType)
     else # otherwise add it back in
         local ret=$($UCI set wireless.@wifi-iface[0].ApCliPassWord="$net_key")
