@@ -321,7 +321,7 @@ _AddWifiUciSection () {
             if [ "$auth" == "NONE" ]; then
                 uci set wireless.@wifi-config[$id].authentication="NONE"
             else
-                uci set wireless.@wifi-config[$id].authentication="AES" # assume AES
+                uci set wireless.@wifi-config[$id].authentication="$encrypt"
             fi
 			uci set wireless.@wifi-iface[0].ApCliEnable="1"
 			keyLength=${#password}
