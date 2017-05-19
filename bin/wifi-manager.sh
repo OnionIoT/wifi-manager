@@ -121,6 +121,86 @@ Read_option () {
     echo $($UCI -q show $option | grep -o "'.*'" | sed "s/'/\"/g")
 }
 
+Check_wifi_entry () {
+    _Print "Entering Check_section"
+    local entry_number=$1
+    local entry_exists=0
+    local entry_type=$($UCI get wireless.@wifi-config)
+    
+    if [ "$entry_type" == "wifi-config" ]
+    then
+        entry_exists=1
+    fi
+    
+    echo $entry_exists
+}
+
+# Read all network options
+Read_network_options () {
+    # modify several globals at once
+    configured_nets=""
+    configured_auth=""
+    configured_key=""
+    configured_encrypt=""
+    
+    local entry_number=0
+    
+    # variables to store the config options at each step
+    local next_ssid=""
+    local next_auth=""
+    local next_encrypt=""
+    local next_key=""
+    
+    local option_base_name="wireless.@wifi-config"
+    
+    local entry_status="nonempty"
+    while [ "$entry_status" != 0 ]
+    do
+        # check if the section exists, returns 1 or 0
+        entry_status=$(Check_wifi_entry $entry_number)
+        if [ "$entry_status" == 1 ]
+        then
+            # read the options
+            # if they do not exist, they will be blank
+            next_ssid=$(Read_option "$option_base_name[$entry_number].ssid")
+            next_auth=$(Read_option "$option_base_name[$entry_number].authentication")
+            next_encrypt=$(Read_option "$option_base_name[$entry_number].encryption")
+            next_key=$(Read_option "$option_base_name[$entry_number].key")
+            
+            # compatibility for old configs
+            # if the 'authentication' option does not exist, it's an old config
+            # 'encryption' will store the authentication type
+            # 'key' may not exist for an unprotected network
+            if [ "$next_auth" == ""]
+            then
+                # protected network
+                if [ $next_encrypt != "NONE" ]
+                then
+                    # load the authentication type and assume AES
+                    next_auth=\"$next_encrypt\"
+                    next_encrypt=\"$DEFAULTENCRYPTION\"
+                else # unprotected
+                    next_auth="NONE"
+                    next_encrypt="NONE"
+                    next_key="NONE"
+                fi
+            # else it's a new config, the properties should be loaded as-is
+            fi
+            
+            # add to the option lists
+            configured_nets="$configured_nets$next_ssid "
+            configured_auth="$configured_auth$next_auth "
+            configured_encrypt="$configured_encrypt$next_encrypt "
+            configured_key="$configured_key$next_key "
+            
+            # increment entry number and do it again
+            entry_number=$((entry_number + 1))
+        fi
+    done
+    
+    # globals have been modified, proceed
+}
+
 Read () {
     step=0
     ssid_str=""
@@ -403,14 +483,17 @@ Main_Seq () {
 
 
     # READ CONFIGURED NETWORKS
-    _Print "Reading configured networks in station mode..."
-    configured_nets=$(Read)
-    _Print "Reading network password."
-    configured_key=$(Read_key)
-    _Print "Reading authorization type."
-    configured_auth=$(Read_auth)
-    _Print "Reading encryption type."
-    configured_encrypt=$(Read_encrypt)
+    # _Print "Reading configured networks in station mode..."
+    # configured_nets=$(Read)
+    # _Print "Reading network password."
+    # configured_key=$(Read_key)
+    # _Print "Reading authorization type."
+    # configured_auth=$(Read_auth)
+    # _Print "Reading encryption type."
+    # configured_encrypt=$(Read_encrypt)
+    _Print "Reading configured network options."
+    local read_config=$(Read_network_options)
+    $()
     if [ "$configured_nets" == "" ]; then
         _Print "no configured station networks... aborting"
         if [ "$bTest" == 1 ]; then
