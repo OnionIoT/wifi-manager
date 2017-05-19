@@ -21,6 +21,8 @@ bBoot=0
 bVerbose=0
 bTest=1
 
+# global variable: default encryption for old configs
+DEFAULTENCRYPTION='AES'
 
 # output files if necessary
 TEST_OUT=/root/int_tmp_test.txt
@@ -122,10 +124,10 @@ Read_option () {
 }
 
 Check_wifi_entry () {
-    _Print "Entering Check_section"
+    _Print "Entering Check_wifi_entry"
     local entry_number=$1
     local entry_exists=0
-    local entry_type=$($UCI get wireless.@wifi-config)
+    local entry_type=$($UCI -q get wireless.@wifi-config[$entry_number])
     
     if [ "$entry_type" == "wifi-config" ]
     then
@@ -167,22 +169,28 @@ Read_network_options () {
             next_encrypt=$(Read_option "$option_base_name[$entry_number].encryption")
             next_key=$(Read_option "$option_base_name[$entry_number].key")
             
+            # debug
+            _Print "Reading next_ssid: $next_ssid"
+            _Print "Reading next_auth: $next_auth"
+            _Print "Reading next_encrypt: $next_encrypt"
+            _Print "Reading next_key: $next_key"
+            
             # compatibility for old configs
             # if the 'authentication' option does not exist, it's an old config
             # 'encryption' will store the authentication type
             # 'key' may not exist for an unprotected network
-            if [ "$next_auth" == ""]
+            if [ "$next_auth" == "" ]
             then
                 # protected network
-                if [ $next_encrypt != "NONE" ]
+                if [ "$next_encrypt" != '"NONE"' ]
                 then
                     # load the authentication type and assume AES
-                    next_auth=\"$next_encrypt\"
+                    next_auth=$next_encrypt
                     next_encrypt=\"$DEFAULTENCRYPTION\"
                 else # unprotected
-                    next_auth="NONE"
-                    next_encrypt="NONE"
-                    next_key="NONE"
+                    next_auth='"NONE"'
+                    next_encrypt='"NONE"'
+                    next_key='"NONE"'
                 fi
             # else it's a new config, the properties should be loaded as-is
             fi
@@ -199,6 +207,12 @@ Read_network_options () {
     done
     
     # globals have been modified, proceed
+    
+    # debug
+    _Print "configured_nets: $configured_nets"
+    _Print "configured_auth: $configured_auth"
+    _Print "configured_encrypt: $configured_encrypt"
+    _Print "configured_key: $configured_key"
 }
 
 Read () {
@@ -370,11 +384,12 @@ Check_connection() {
 
 
 Connection_loop () {
-    configured_nets=$1
-    configured_key=$2
-    configured_auth=$3
-    configured_encrypt=$4
-    iwinfo_scans=$5
+    _Print "Entering Connection_loop"
+    # configured_nets=$1
+    # configured_key=$2
+    # configured_auth=$3
+    # configured_encrypt=$4
+    # iwinfo_scans=$5
     conf_net_num=$(Get_conf_net_num)   
     res=0
     count=1
@@ -455,6 +470,7 @@ Boot_init () {
 # formerly Boot_Seq
 # This and Regular_Seq were functionally equivalent save for the iwpriv set SiteSurvey line, so they've been combined
 Main_Seq () {
+    _Print "Entering Main_Seq"
     # wait until ra0 is up
     # CHECK THAT radio0 IS UP
     
@@ -492,8 +508,13 @@ Main_Seq () {
     # _Print "Reading encryption type."
     # configured_encrypt=$(Read_encrypt)
     _Print "Reading configured network options."
-    local read_config=$(Read_network_options)
-    $()
+    read_config=$(Read_network_options)
+
+    _Print "configured_nets: $configured_nets"
+    _Print "configured_key: $configured_key"
+    _Print "configured_auth: $configured_auth"
+    _Print "configured_encrypt: $configured_encrypt"
+
     if [ "$configured_nets" == "" ]; then
         _Print "no configured station networks... aborting"
         if [ "$bTest" == 1 ]; then
@@ -517,7 +538,7 @@ Main_Seq () {
 
     # CONNECT TO MATCHED NETWORKS
     _Print ""
-    $(Connection_loop "$configured_nets" "$configured_key" "$configured_auth" "$configured_encrypt" "$iwinfo_scans")
+    $(Connection_loop)
 
     exit
 }
