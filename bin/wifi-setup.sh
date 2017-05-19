@@ -283,6 +283,8 @@ _AddWifiUciSection () {
 	# 	uci set wireless.@wifi-iface[$id].network="wlan"
 	# fi 
 
+    # TODO: this entire bApNetwork block should not be done here
+    # it should be in a separate function that's run when -ap mode is specified
 	if [ $bApNetwork == 1 ]; then
 		# use UCI to set the ssid, encryption, and disabled options
 
@@ -293,9 +295,8 @@ _AddWifiUciSection () {
 			uci set wireless.@wifi-iface[0].ssid="$ssid"
 		fi
 		if [ "$auth" != "" ]; then
-            # switch the config option names later once fixed onion-ubus is ready to be deployed
-			uci set wireless.@wifi-iface[0].encryption="$auth"
-            uci set wireless.@wifi-iface[0].authentication="$encrypt"
+			uci set wireless.@wifi-iface[0].encryption="$encrypt"
+            uci set wireless.@wifi-iface[0].authentication="$auth"
 		fi
             
         # password
@@ -315,59 +316,64 @@ _AddWifiUciSection () {
 
 	else
 		# use UCI to set the ssid, encryption, and disabled options
-			uci set wireless.@wifi-config[$id].ssid="$ssid"
-            # switch the below 2 option names when fixed onion-ubus is deployed
-            uci set wireless.@wifi-config[$id].encryption="$auth"
-            if [ "$auth" == "NONE" ]; then
-                uci set wireless.@wifi-config[$id].authentication="NONE"
-            else
-                uci set wireless.@wifi-config[$id].authentication="$encrypt"
-            fi
-			uci set wireless.@wifi-iface[0].ApCliEnable="1"
-			keyLength=${#password}
+		uci set wireless.@wifi-config[$id].ssid="$ssid"
+        
+        # set auth modes
+        if [ "$auth" == "NONE" ]; then
+            uci set wireless.@wifi-config[$id].authentication="NONE"
+            uci set wireless.@wifi-config[$id].encryption="NONE"
+        else
+            uci set wireless.@wifi-config[$id].authentication="$auth"
+            uci set wireless.@wifi-config[$id].encryption="$encrypt"
+        fi
+		uci set wireless.@wifi-iface[0].ApCliEnable="1"
+		keyLength=${#password}
 
-			# set the network key based on the authentication
-			case "$auth" in
-				WPA2PSK|WPA1PSK)
-					if [ "$keyLength" -lt 8 ] ||
-						[ "$keyLength" -gt 64 ]; then
-						_Print "> ERROR: Password length does not match encryption type. WPA2 passwords must be between 8 and 64 characters." "error"
-						uci delete wireless.@wifi-config[$id]
-                        # does this not need a uci commit wireless here?
-						bError=1
-						exit
-					fi
-					uci set wireless.@wifi-config[$id].key="$password"
-				;;
-				WEP)
-					if [ "$keyLength" -lt 5 ]; then
-						_Print "> ERROR: Password length does not match encryption type. Please enter a valid password." "error"
-						uci delete wireless.@wifi-config[$id]
-						bError=1
-						exit
-					fi
-					uci set wireless.@wifi-config[$id].key=1
-					uci set wireless.@wifi-config[$id].key1="$password"
-				;;
-				none|*)
-					# # set no keys for open networks, delete any existing ones
-					# local key=$(uci -q get wireless.\@wifi-config[$id].key)
-                    # 
-					# if [ "$key" != "" ]; then
-					# 	uci delete wireless.@wifi-config[$id].key
-					# fi
-                    
-                    # add a 'NONE' value as a placeholder for open networks
-                    # the config parser in wifimanager expects non-empty values for existing configurations
-                    uci set wireless.@wifi-config[$id].key='NONE'
-				;;
-			esac
+		# set the network key based on the authentication
+		case "$auth" in
+			WPA2PSK|WPA1PSK)
+				if [ "$keyLength" -lt 8 ] ||
+					[ "$keyLength" -gt 64 ]; then
+					_Print "> ERROR: Password length does not match encryption type. WPA2 passwords must be between 8 and 64 characters." "error"
+					uci delete wireless.@wifi-config[$id]
+                    # does this not need a uci commit wireless here?
+					bError=1
+					exit
+				fi
+				uci set wireless.@wifi-config[$id].key="$password"
+			;;
+			WEP)
+				if [ "$keyLength" -lt 5 ]; then
+					_Print "> ERROR: Password length does not match encryption type. Please enter a valid password." "error"
+					uci delete wireless.@wifi-config[$id]
+					bError=1
+					exit
+				fi
+				uci set wireless.@wifi-config[$id].key=1
+				uci set wireless.@wifi-config[$id].key1="$password"
+			;;
+			none|*)
+				# # set no keys for open networks, delete any existing ones
+				# local key=$(uci -q get wireless.\@wifi-config[$id].key)
+                # 
+				# if [ "$key" != "" ]; then
+				# 	uci delete wireless.@wifi-config[$id].key
+				# fi
+                
+                # add a 'NONE' value as a placeholder for open networks
+                # the config parser in wifimanager expects non-empty values for existing configurations
+                uci set wireless.@wifi-config[$id].key='NONE'
+			;;
+		esac
 	fi
 
 	
 
 
 	# commit the changes
+    # TODO: this is set as a local variable, and set to 1 at the top of this fn
+    # it may have been placed here for testing,
+    # but uci will not commit changes until this command is run anyway
 	if [ $commit == 1 ]; then
 		uci commit wireless
 	fi
@@ -650,7 +656,8 @@ _UserInputJsonReadNetworkAuth () {
 		json_select $index
 
 		# read the authentication object type
-		json_get_var auth_type encryption
+		# json_get_var auth_type encryption # old backwards mapping
+        json_get_var auth_type authentication
 		if [ "$auth_type" == "WPA1PSKWPA2PSK" ]; then
 			# read the authentication type
 			auth="WPA2PSK"
@@ -659,8 +666,8 @@ _UserInputJsonReadNetworkAuth () {
 		fi
         
         # read the encryption type value into variable "encrypt"
-        # yes they are backwards, they match the ubus wifi scan mappings
-        json_get_var encrypt authentication
+        # json_get_var encrypt authentication # old backwards mapping
+        json_get_var encrypt encryption
 	else
 		# no authentication, so no encryption: open network
 		auth="NONE"
@@ -699,6 +706,7 @@ _UserInputReadNetworkAuth () {
 	    4)  # no authentication, no encryption
 			auth="NONE"
             encrypt="NONE"
+            key="NONE"
 	    ;;
 	esac
 

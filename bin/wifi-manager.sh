@@ -159,11 +159,11 @@ Read_key () {
 Read_auth () {
     step=0
     auth_str=""
-    ret=$(echo $($UCI -q show wireless.@wifi-config[$step].encryption) | grep -o "'.*'" | sed "s/'/\"/g")
+    ret="nonempty"
 
     while [ "$ret" != "" ]
     do
-        ret=$(echo $($UCI -q show wireless.@wifi-config[$step].encryption) | grep -o "'.*'" | sed "s/'/\"/g")
+        ret=$(echo $($UCI -q show wireless.@wifi-config[$step].authentication) | grep -o "'.*'" | sed "s/'/\"/g")
         auth_str="$auth_str$ret "
         step=$((step + 1))
     done
@@ -183,7 +183,7 @@ Read_encrypt () {
     _Print "Building property string." # debug
     while [ "$new_prop" != "" ]
     do
-        new_prop=$(Read_option "wireless.@wifi-config[$i].authentication") # get the option of the i'th wifi config
+        new_prop=$(Read_option "wireless.@wifi-config[$i].encryption") # get the option of the i'th wifi config
         _Print "new_prop: $new_prop" # debug
         prop_str="$prop_str$new_prop "
         i=$((i + 1))
@@ -262,12 +262,6 @@ Connect () {
     local ret=$($UCI set wireless.@wifi-iface[0].ApCliEnable=1)
     # commit these changes
     local ret=$($UCI commit wireless)
-
-    # local ret=$($UCI set wireless.@wifi-iface[0].ApCliEnable=1)
-    
-    # local ret=$($UCI set wireless.@wifi-iface[0].ApCliPassWord="$net_key")
-    # local ret=$($UCI set wireless.@wifi-iface[0].ApCliAuthMode="$net_auth")
-    # local ret=$($UCI commit wireless)
 }
 
 
@@ -376,58 +370,10 @@ Boot_init () {
 
 ##########################################################
 ##########################################################
-# Regular_Seq () {
-# 
-#     # CHECK THAT RADIO0 IS UP
-#     init=$(iwpriv ra0 set SiteSurvey=1)
-#     ret=$(Wait)
-#     if [ "$ret" != "found" ]; then
-#         _Print "radio0 is not up... try again later"
-#         if [ $bTest == 1 ]; then
-#             echo "radio0 not up, aborting" >> $TEST_OUT
-#         fi
-#         exit
-#     fi
-# 
-# 
-#     # READ CONFIGURED NETWORKS
-#     _Print "Reading configured networks in station mode..."
-#     configured_nets=$(Read)
-#     configured_key=$(Read_key)
-#     configured_auth=$(Read_auth)
-#     # add encryption type
-#     configured_encrypt=$(Read_encrypt)
-#     if [ "$configured_nets" == "" ]; then
-#         _Print "no configured station networks... aborting"
-#         if [ "$bTest" == 1 ]; then
-#             echo "no configured networks" >> $TEST_OUT
-#         fi
-#         exit
-#     fi
-# 
-# 
-#     # SCAN NEARBY NETWORKS  
-#     _Print ""
-#     _Print "Scanning nearby networks..."
-#     iwinfo_scans=$(Scan)
-#     if [ "$iwinfo_scans" == "" ]; then
-#         _Print "no nearby networks... aborting"
-#         if [ "$bTest" == 1 ]; then
-#             echo "no scanned networks" >> $TEST_OUT
-#         fi
-#         exit 
-#     fi
-# 
-#     # CONNECT TO MATCHING NETWORKS
-#     _Print  ""
-#     $(Connection_loop "$configured_nets" "$configured_key" "$configured_auth" "$configured_encrypt" "$iwinfo_scans")
-# 
-#     _Print "Wifi manager finished"
-#     exit
-# }
 
+# Main network connection sequence
 # formerly Boot_Seq
-# This and Regular_Seq were functionally equivalent save for the iwpriv set SiteSurvey line, so they've been combined into Main_Seq
+# This and Regular_Seq were functionally equivalent save for the iwpriv set SiteSurvey line, so they've been combined
 Main_Seq () {
     # wait until ra0 is up
     # CHECK THAT radio0 IS UP
