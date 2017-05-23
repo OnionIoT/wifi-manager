@@ -21,6 +21,12 @@ bBoot=0
 bVerbose=0
 bTest=1
 
+# global variables: configuration option lists
+configured_nets=""
+configured_auth=""
+configured_encrypt=""
+configured_key=""
+
 # global variable: default encryption for old configs
 DEFAULTENCRYPTION='AES'
 
@@ -139,13 +145,14 @@ Check_wifi_entry () {
 
 # Read all network options
 Read_network_options () {
-    # modify several globals at once
-    configured_nets=""
-    configured_auth=""
-    configured_key=""
-    configured_encrypt=""
+    _Print "Entering Read_network_options"
+    # modify several variables at once
+    configured_nets=$1
+    configured_auth=$2
+    configured_encrypt=$3
+    configured_key=$4
     
-    local entry_number=0
+    entry_number=0
     
     # variables to store the config options at each step
     local next_ssid=""
@@ -163,17 +170,12 @@ Read_network_options () {
         if [ "$entry_status" == 1 ]
         then
             # read the options
+            # if they exist, they will be enclosed in quotation marks
             # if they do not exist, they will be blank
             next_ssid=$(Read_option "$option_base_name[$entry_number].ssid")
             next_auth=$(Read_option "$option_base_name[$entry_number].authentication")
             next_encrypt=$(Read_option "$option_base_name[$entry_number].encryption")
             next_key=$(Read_option "$option_base_name[$entry_number].key")
-            
-            # debug
-            _Print "Reading next_ssid: $next_ssid"
-            _Print "Reading next_auth: $next_auth"
-            _Print "Reading next_encrypt: $next_encrypt"
-            _Print "Reading next_key: $next_key"
             
             # compatibility for old configs
             # if the 'authentication' option does not exist, it's an old config
@@ -205,87 +207,6 @@ Read_network_options () {
             entry_number=$((entry_number + 1))
         fi
     done
-    
-    # globals have been modified, proceed
-    
-    # debug
-    _Print "configured_nets: $configured_nets"
-    _Print "configured_auth: $configured_auth"
-    _Print "configured_encrypt: $configured_encrypt"
-    _Print "configured_key: $configured_key"
-}
-
-Read () {
-    step=0
-    ssid_str=""
-    ret="nonempty"
-    while [ "$ret" != "" ]
-    do
-        ret=$(echo $($UCI -q show wireless.@wifi-config[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
-            ssid_str="$ssid_str$ret "
-        step=$((step + 1))
-    done
-    
-    # SHOW CONFIGURED NETWORKS IF VERBOSE
-    if [ $bVerbose == 1 ] ; then
-        for word in $ssid_str
-        do
-            _Print $word
-        done
-    fi
-    echo $ssid_str
-}
-
-Read_key () {
-    step=0
-    key_str=""
-    ret="nonempty"
-    while [ "$ret" != "" ]
-    do
-        ret=$(echo $($UCI -q show wireless.@wifi-config[$step].key) | grep -o "'.*'" | sed "s/'/\"/g")
-        key_str="$key_str$ret "
-        step=$((step + 1))
-    done
-
-    echo $key_str
-}
-
-Read_auth () {
-    step=0
-    auth_str=""
-    ret="nonempty"
-
-    while [ "$ret" != "" ]
-    do
-        ret=$(echo $($UCI -q show wireless.@wifi-config[$step].authentication) | grep -o "'.*'" | sed "s/'/\"/g")
-        auth_str="$auth_str$ret "
-        step=$((step + 1))
-    done
-
-    echo $auth_str
-}
-
-# create a space-separated string of configuration option values
-# all options are enclosed in quotes
-Read_encrypt () {
-    _Print "Entering Read_encrypt function." # debug
-    local i=0
-    local prop_str=""
-    local new_prop="nonempty" # just needs to be any nonempty value for first pass
-    
-    # build the string of props
-    _Print "Building property string." # debug
-    while [ "$new_prop" != "" ]
-    do
-        new_prop=$(Read_option "wireless.@wifi-config[$i].encryption") # get the option of the i'th wifi config
-        _Print "new_prop: $new_prop" # debug
-        prop_str="$prop_str$new_prop "
-        i=$((i + 1))
-    done
-
-    # debug
-    _Print "Network encryption list: $prop_str"
-    echo $prop_str
 }
 
 Scan () {
@@ -326,10 +247,10 @@ Get_conf_net_num () {
 
 # set ApCli options for connecting to wifi
 Connect () {
-    net_ssid=$(echo "$1" | sed -e 's/^"//' -e 's/"$//')
-    net_key=$(echo "$2" | sed -e 's/^"//' -e 's/"$//')
-    net_auth=$(echo "$3" | sed -e 's/^"//' -e 's/"$//')
-    net_encrypt=$(echo "$4" | sed -e 's/^"//' -e 's/"$//')
+    local net_ssid=$(echo "$1" | sed -e 's/^"//' -e 's/"$//')
+    local net_auth=$(echo "$2" | sed -e 's/^"//' -e 's/"$//')
+    local net_encrypt=$(echo "$3" | sed -e 's/^"//' -e 's/"$//')
+    local net_key=$(echo "$4" | sed -e 's/^"//' -e 's/"$//')
     
     _Print "net_auth: $net_auth"
     
@@ -345,6 +266,7 @@ Connect () {
         local ret=$($UCI set wireless.@wifi-iface[0].ApCliAuthMode="$net_auth")
         # for old configs, encryption type may not be specified
         # if not specified, assume AES
+        _Print "net_encrypt: $net_encrypt"
         if [ $net_encrypt == "" ] ; then
             local ret=$($UCI set wireless.@wifi-iface[0].ApCliEncrypType="AES")
         else
@@ -385,11 +307,11 @@ Check_connection() {
 
 Connection_loop () {
     _Print "Entering Connection_loop"
-    # configured_nets=$1
-    # configured_key=$2
-    # configured_auth=$3
-    # configured_encrypt=$4
-    # iwinfo_scans=$5
+    configured_nets=$1
+    configured_auth=$2
+    configured_encrypt=$3
+    configured_key=$4
+    iwinfo_scans=$5
     conf_net_num=$(Get_conf_net_num)   
     res=0
     count=1
@@ -423,7 +345,7 @@ Connection_loop () {
         _Print " iwinfo_scans: $iwinfo_scans" # debug
         res=$(Compare_str "$connection" "$iwinfo_scans")
         if [ "$res" == 1 ]; then
-            $(Connect "$connection" "$key" "$authentication" "$encryption")
+            $(Connect "$connection" "$authentication" "$encryption" "$key")
             local down=$($UBUS call network.interface.wwan down)
             $(wifi &> /dev/null)
             sleep 10
@@ -448,21 +370,6 @@ Connection_loop () {
     done
 }
 
-Boot_init () {
-    net_index=$1
-    step=0
-    ret=$(echo $($UCI -q show wireless.@wifi-iface[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
-    while [ "$ret" != "" ]
-    do
-        mode=$($UCI -q get wireless.@wifi-iface[$step].mode)
-        if [ "$mode" == "ap" ]; then
-            ap_step=$step
-        fi
-        ret=$(echo $($UCI -q show wireless.@wifi-iface[$step].ssid) | grep -o "'.*'" | sed "s/'/\"/g")
-        step=$((step + 1))
-    done
-}
-
 ##########################################################
 ##########################################################
 
@@ -470,10 +377,9 @@ Boot_init () {
 # formerly Boot_Seq
 # This and Regular_Seq were functionally equivalent save for the iwpriv set SiteSurvey line, so they've been combined
 Main_Seq () {
-    _Print "Entering Main_Seq"
+    # _Print "Entering Main_Seq"
     # wait until ra0 is up
     # CHECK THAT radio0 IS UP
-    
     ret=$(Wait)
     if [ "$ret" != "found" ]; then
         _Print "radio0 is not up... try again later"
@@ -481,39 +387,13 @@ Main_Seq () {
             echo "radio0 not up, aborting" >> $TEST_OUT
         fi
         exit
-    fi    
-
-
-    # INITIALIZE BY DISABLING ALL STATION NETWORKS AND RESET WIFI ADAPTER
-    # _Print ""
-    # _Print "initializing... disabling all station mode networks"
-    # $(Boot_init)
+    fi
     
-
-    # WAIT FOR radio0 TO BE UP
-    # ret=$(Wait)
-    # if [ "$ret" != "found" ]; then
-    #     _Print "radio0 is not up... try again later with regular sequence"
-    #     exit
-    # fi
-
-
-    # READ CONFIGURED NETWORKS
-    # _Print "Reading configured networks in station mode..."
-    # configured_nets=$(Read)
-    # _Print "Reading network password."
-    # configured_key=$(Read_key)
-    # _Print "Reading authorization type."
-    # configured_auth=$(Read_auth)
-    # _Print "Reading encryption type."
-    # configured_encrypt=$(Read_encrypt)
+    # read stored network options
+    
+        
     _Print "Reading configured network options."
-    read_config=$(Read_network_options)
-
-    _Print "configured_nets: $configured_nets"
-    _Print "configured_key: $configured_key"
-    _Print "configured_auth: $configured_auth"
-    _Print "configured_encrypt: $configured_encrypt"
+    Read_network_options "$configured_nets" "$configured_auth" "$configured_encrypt" "$configured_key"
 
     if [ "$configured_nets" == "" ]; then
         _Print "no configured station networks... aborting"
@@ -538,7 +418,8 @@ Main_Seq () {
 
     # CONNECT TO MATCHED NETWORKS
     _Print ""
-    $(Connection_loop)
+    $(Connection_loop "$configured_nets" "$configured_auth" "$configured_encrypt" "$configured_key" "$iwinfo_scans")
+
 
     exit
 }
