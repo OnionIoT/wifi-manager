@@ -19,7 +19,7 @@ WIFI="/sbin/wifi"
 bUsage=0
 bBoot=0
 bVerbose=0
-bTest=1
+bTest=0
 
 # global variables: configuration option lists
 configured_nets=""
