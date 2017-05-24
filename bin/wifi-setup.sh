@@ -17,6 +17,7 @@ bCmdAdd=0
 bCmdDisable=0
 bCmdEnable=0
 bCmdRemove=0
+bCmdClear=0     # for clearing saved network entries
 bCmdPriority=0
 bCmdList=0
 bCmdInfo=0
@@ -72,6 +73,11 @@ usage () {
 	_Print "  info "
 	_Print "Functionality: Display a JSON-formatted table of all info for specified network"
 	_Print "Usage: $0 info -ssid <ssid>"
+	_Print ""
+    
+    _Print "  clear "
+	_Print "Functionality: Clear all saved network configurations"
+	_Print "Usage: $0 clear"
 	_Print ""
 
 	_Print ""
@@ -585,7 +591,54 @@ _JsonUciNetworkInfo () {
 	json_dump
 }
 
+_CheckWifiEntry () {
+    # _Print "Entering Check_wifi_entry"
+    local entry_number=$1
+    local entry_exists=0
+    local entry_type=$(uci -q get wireless.@wifi-config[$entry_number])
+    
+    if [ "$entry_type" == "wifi-config" ]
+    then
+        entry_exists=1
+    fi
+    
+    echo $entry_exists
+}
 
+# clear all existing wifi networks
+_ClearWifiEntries () {
+    _Print "Clearing all stored network entries."
+    # count how many config entries there are
+    local entry_number=0
+    
+    local next_entry_exists=1
+    while [ $next_entry_exists != 0 ]
+    do
+        next_entry_exists=$(_CheckWifiEntry $entry_number)
+        if [ $next_entry_exists == 1 ]; then
+            entry_number=$((entry_number + 1))
+        fi
+    done
+    
+    # delete the entries
+    local step=0
+    while [ $step -lt $entry_number ]
+    do
+        uci delete wireless.@wifi-config[0]     # entries are shifted automatically
+        step=$((step + 1))
+    done
+    
+    # reset ApCli options and disable it
+    uci set wireless.@wifi-iface[0].ApCliEnable='0'
+    uci set wireless.@wifi-iface[0].ApCliSsid='yourssid'
+    uci set wireless.@wifi-iface[0].ApCliPassWord='yourpassword'
+    uci commit
+    
+    # reset the wifi and disconnect from current network
+    _Print "Restarting WiFi driver and disconnecting from current network."
+    _Print "This will end all wireless ssh sessions!"
+    wifi
+}
 
 ################################
 ##### User Input Functions #####
@@ -906,6 +959,11 @@ do
 			priorityMove=$1
 			shift
 		;;
+        -clear|clear)
+			bCmd=1
+            bCmdClear=1
+            shift
+		;;
 		-h|--h|help|-help|--help)
 			usage
 			exit
@@ -1013,7 +1071,11 @@ elif [ $bCmdInfo == 1 ]; then
 
 	# remove error message (will be printed in json)
 	id=0
-	
+
+elif [ $bCmdClear == 1 ]; then
+    _ClearWifiEntries
+    id=0
+    
 fi # command if else statement
 
 
@@ -1028,6 +1090,7 @@ if [ $bError == 0 ]; then
 		[ $bCmdDisable == 1 ] ||
 		[ $bCmdEnable == 1 ] ||
 		[ $bCmdRemove == 1 ] ||
+        # bCmdClear is not considered because all wifi options will be reset
 		[ $bCmdPriority == 1 ];
 	then
 		_Print "> Restarting wifimanager for changes to take effect" "status"
