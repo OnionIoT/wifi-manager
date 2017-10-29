@@ -14,6 +14,7 @@ bError=0
 #commands
 bCmd=0
 bCmdAdd=0
+bCmdEdit=0
 bCmdDisable=0
 bCmdEnable=0
 bCmdRemove=0
@@ -26,9 +27,6 @@ bCmdInfo=0
 #parameters
 bApNetwork=0
 
-
-# other settings
-DEFAULTENCRYPTION='AES'
 
 #############################
 ##### Print Usage ###########
@@ -47,35 +45,35 @@ usage () {
 	_Print "$0 <command> <parameters>"
 	_Print ""
 	_Print "Available Commands:"
-	_Print "  add "
+	_Print "	add "
 	_Print "Functionality: Add a new WiFi network to the Omega's settings"
 	_Print "Usage: $0 add -ssid <ssid> -encr <encryption type> -password <password>"
 	_Print "Valid encryption types [WPA2, WPA, WEP, NONE]"
 	_Print ""
-	_Print "  edit "
+	_Print "	edit "
 	_Print "Functionality: Edit the information of a configured WiFi network"
 	_Print "Usage: $0 edit -ssid <ssid> -encr <encryption type> -password <password>"
 	_Print ""
-	_Print "  remove "
+	_Print "	remove "
 	_Print "Functionality: Remove an existing WiFi network from the Omega's settings"
 	_Print "Usage: $0 remove -ssid <ssid>"
 	_Print ""
-	_Print "  priority "
+	_Print "	priority "
 	_Print "Functionality: Move a WiFi network up or down in the priority list when attempting to connect"
 	_Print "Usage: $0 priority -ssid <ssid> -move <up|down>"
 	_Print "           up:     increase the priority"
 	_Print "           down:   decrease the priority"
 	_Print ""
-	_Print "  list "
+	_Print "	list "
 	_Print "Functionality: Display a JSON-formatted list of all configured networks"
 	_Print "Usage: $0 list"
 	_Print ""
-	_Print "  info "
+	_Print "	info "
 	_Print "Functionality: Display a JSON-formatted table of all info for specified network"
 	_Print "Usage: $0 info -ssid <ssid>"
 	_Print ""
-    
-    _Print "  clear "
+
+	_Print "	clear "
 	_Print "Functionality: Clear all saved network configurations"
 	_Print "Usage: $0 clear"
 	_Print ""
@@ -98,7 +96,7 @@ usage () {
 # initialize the json
 _Init () {
 	if [ $bJson == 1 ]; then
-		# json setup      
+		# json setup
 		json_init
 	fi
 }
@@ -109,7 +107,7 @@ _Init () {
 _Print () {
 	if [ $bJson == 0 ]; then
 		echo $1
-	else 
+	else
 		json_add_string "$2" "$1"
 	fi
 }
@@ -131,6 +129,10 @@ _Close () {
 	fi
 }
 
+
+########################################
+###     UCI Searching Functions
+########################################
 
 # find total number of configured wifi networks
 # 	returns value via echo
@@ -191,16 +193,33 @@ _FindNetworkBySsid () {
 	echo $id
 }
 
+# find a networks SSID from the id
+#	returns value via echo
+#	$1	- network id
+_FindNetworkSsid () {
+	if [ $bApNetwork == 1 ]; then
+		local ssidName=$(uci -q get wireless.\@wifi-iface[$1].ssid)
+		#local ssidName=$(uci -q get wireless.ap.ssid)	# confirm the fix
+	else
+		local ssidName=$(uci -q get wireless.\@wifi-config[$1].ssid)
+	fi
+
+	echo $ssidName
+}
+
+### DEPRECATED ###
 # find the AP network's array number
 #	returns value via echo
 #		-1: 		if not found
 #		all others: valid value found
+# TODO: come back to this
 _FindApNetwork () {
 	local id=-1
 	local count=0
 
 	# find the first network
 	local network=$(uci -q get wireless.\@wifi-iface[$count])
+	#local network=$(uci -q get wireless.ap) # TODO: confirm this fix
 
 	# loop through all configured networks
 	while [ "$network" == "wifi-iface" ]
@@ -222,48 +241,379 @@ _FindApNetwork () {
 	echo $id
 }
 
-# find a networks SSID from the id
-#	returns value via echo
-#	$1	- network id
-_FindNetworkSsid () {
-	if [ $bApNetwork == 1 ]; then
-		local ssidName=$(uci -q get wireless.\@wifi-iface[$1].ssid)
-	else
-		local ssidName=$(uci -q get wireless.\@wifi-config[$1].ssid)
+
+########################################
+###     UCI Interaction Functions
+########################################
+
+# commit changes to wireless config
+UciCommitWireless () {
+	uci commit wireless
+}
+
+# add a wireless.wifi-config section
+UciAddWifiConfigSection () {
+	uci add wireless wifi-config > /dev/null
+}
+
+# get a wireless.wifi-config section based on it's index number
+#  input:
+#	$1	- index
+#  output:
+#	if section found: 	"wifi-config"
+#	no section found:	""
+UciCheckWifiConfigIndex () {
+	local index=$1
+	local config=""
+
+	if [ $index -ge 0 ]; then
+		config=$(uci -q get wireless.\@wifi-config[$index])
 	fi
 
-	echo $ssidName
+	echo "$config"
 }
 
-# Normalize the authentication input
-#	modifies the global auth variable
-_NormalizeAuthInput () {
-	case "$auth" in
-		WPA1PSKWPA2PSK|WPA2PSK|wpa2|psk2|WPA2|PSK2)
-			auth="WPA2PSK"
+# populate a wireless.wifi-config section
+#  input:
+#	$1	- index
+#	$2	- ssid
+#	$3	- encryption
+#	$4	- password
+UciPopulateWifiConfigSection () {
+	local index=$1
+	local ssid=$2
+	local encryption=$3
+	local password=$4
+
+	# set the network key based on the encryption
+	case "$encryption" in
+		psk2|psk)
+			uci set wireless.\@wifi-config[$index].key="$password"
 		;;
-		WPA1PSK|wpa|psk|WPA|PSK)
-			auth="WPA1PSK"
-		;;
-		wep|WEP)
-			auth="WEP"
+		wep)
+			uci set wireless.\@wifi-config[$index].key=1
+			uci set wireless.\@wifi-config[$index].key1="$password"
 		;;
 		none|*)
-			auth="NONE"
+			# add a 'NONE' value as a placeholder for open networks
+			# the config parser in wifimanager expects non-empty values for existing configurations
+			uci set wireless.\@wifi-config[$index].key='none'
 		;;
 	esac
+
+	# set the ssid and encryption type
+	uci set wireless.\@wifi-config[$index].ssid="$ssid"
+	uci set wireless.\@wifi-config[$index].encryption="$encrypt"
+
+	# commit the changes
+	UciCommitWireless
+	# TODO: ensure the above is required
 }
 
+# delete a wireless.wifi-config section
+#  input:
+#	$1	- index
+#	$2	- ssid
+UciDeleteWifiConfigSection () {
+	local index=$1
+	local ssid=$2
+
+	# remove the section
+	uci delete wireless.\@wifi-config[$index]
+	# commit the changes
+	UciCommitWireless
+}
+
+# reorder a wireless.wifi-config section
+#  input:
+#	$1	- index
+#	$2	- ssid
+#	$3	- desired order number in uci config
+# 	$4 	- priority number in terms of other networks (optional)
+UciReorderWifiConfigSection () {
+	local index=$1
+	local ssid=$2
+	local priority=$3
+	local humanPriority=$4
+
+	# check that this wifi-config exists
+	local config=$(UciCheckWifiConfigIndex $index)
+
+	if [ "$config" != "" ]; then
+		# print a message
+		if [ "$humanPriority" != "" ]; then
+			_Print "> Shifting '$ssid' priority to $humanPriority" "output"
+		else
+			_Print "> Shifting '$ssid' priority" "output"
+		fi
+
+		# perform the reorder
+		uci reorder wireless.\@wifi-config[$index]=$priority
+
+		# commit the changes
+		UciCommitWireless
+	fi
+}
+
+# output a JSON object of specified network
+#	$1 	- network id
+#	$2	- ssid
+UciJsonOutputWifiNetworkInfo () {
+	local id=$1
+	local ssid=$2
+
+	# check that this wifi-config exists
+	local config=$(UciCheckWifiConfigIndex $id)
+
+	if [ "$config" != "" ]; then
+		# find the data
+		local ssidRd=$(uci -q get wireless.\@wifi-config[$id].ssid)
+		local modeRd=$(uci -q get wireless.\@wifi-config[$id].mode)
+		local encrRd=$(uci -q get wireless.\@wifi-config[$id].encryption)
+		local authRd=$(uci -q get wireless.\@wifi-config[$id].authentication)
+		local passwordRd=$(uci -q get wireless.\@wifi-config[$id].key)
+
+		if [ "$encrRd" == "wep" ]; then
+			passwordRd=$(uci -q get wireless.\@wifi-config[$id].key$passwordRd)
+		fi
+
+		# create and populate object for this network
+		_Print "$ssidRd" "ssid"
+		_Print "$encrRd" "encryption"
+		_Print "$passwordRd" "password"
+
+	else
+		$bError=1
+	fi
+}
+
+# output a JSON list of all configured networks
+UciJsonOutputAllNetworks () {
+	local count=0
+
+	# create the results array
+	json_add_array results
+
+	# find the first network
+	local config=$(UciCheckWifiConfigIndex $count)
+
+	# loop through all configured networks
+	while [ "$config" == "wifi-config" ]
+	do
+		# create an object for this network
+		json_add_object
+		# populate the object
+		UciJsonOutputWifiNetworkInfo $count
+		# close the object
+		json_close_object
+
+		# continue the loop
+		count=$(($count + 1))
+		config=$(UciCheckWifiConfigIndex $count)
+	done
+
+	# finish the array
+	json_close_array
+
+	# print the json
+	if [ $bJson == 0 ]; then
+		json_dump | sed 's/,/,\n       /g' | sed 's/{ "/{\n\n        "/g' | sed 's/}/\n\}/g' | sed 's/\[/\[\n/g' | sed 's/\]/\n\]/g'
+	fi
+}
+
+
+### wifi-iface ###
+
+# check wifi-iface interface input
+#	$1 	- 'ap' or 'sta'
+UciCheckWifiIfaceInput () {
+	local iface=$1
+	local bIfaceError=0
+
+	# check if iface is an allowed input
+	if 	[ "$iface" != "ap" ] &&
+		[ "$iface" != "sta" ];
+	then
+		bIfaceError=1
+	fi
+
+	echo $bIfaceError
+}
+
+# enable or disable a wifi iface
+#	$1 	- 'ap' or 'sta'	(assuming that this has been checked)
+#	$2	- enable (1) or disable (0)
+UciSetWifiIfaceEnable () {
+	local iface=$1
+	local bEnable=$2
+
+	# wifi-iface needs 'disabled' parameter - invert the enable
+	local bDisabled=$((!$bEnable))
+
+	# set the enable/disable
+	uci set wireless.$iface.disabled="$bDisabled"
+
+	# commit the changes
+	UciCommitWireless
+	# TODO: ensure the above is required
+}
+
+# populate a wireless.wifi-config section
+#  input:
+#	$1	- iface
+#	$2	- ssid
+#	$3	- encryption
+#	$4	- password
+UciPopulateWifiIfaceSection () {
+	local iface=$1
+	local ssid=$2
+	local encryption=$3
+	local password=$4
+
+	# check if iface is an allowed input
+	local bInvalidInput=$(UciCheckWifiIfaceInput $iface)
+	if 	[ $bInvalidInput -eq 0 ]; then
+		# set the network key based on the encryption
+		case "$encryption" in
+			psk2|psk)
+				uci set wireless.$iface.key="$password"
+			;;
+			wep)
+				uci set wireless.$iface.key=1
+				uci set wireless.$iface.key1="$password"
+			;;
+			none|*)
+				# add a 'NONE' value as a placeholder for open networks
+				# the config parser in wifimanager expects non-empty values for existing configurations
+				uci set wireless.$iface.key='none'
+			;;
+		esac
+
+		# set the ssid and encryption type
+		uci set wireless.$iface.ssid="$ssid"
+		uci set wireless.$iface.encryption="$encrypt"
+
+		# commit the changes
+		UciCommitWireless
+	fi
+}
+
+
+
+########################################
+###     Wifi Network Modification Functions
+########################################
+
+# Ensure network key meets length requirements based on the encryption type
+#  input:
+#	$1	- encryption
+#	$2	- password
+#  output:
+#	if key is ok: 		0
+#	if key is not ok:	1
+_CheckPasswordLength () {
+	local encryption=$1
+	local password=$2
+	local bKeyError=0
+
+	keyLength=${#password}
+
+	# perform the check
+	case "$encryption" in
+		psk2|psk)
+			if [ "$keyLength" -lt 8 ] ||
+				[ "$keyLength" -gt 64 ]; then
+				_Print "> ERROR: Password length does not match encryption type. WPA2 passwords must be between 8 and 64 characters." "error"
+				bKeyError=1
+				exit
+			fi
+		;;
+		wep)
+			if [ "$keyLength" -lt 5 ]; then
+				_Print "> ERROR: Password length does not match encryption type. Please enter a valid password." "error"
+				bKeyError=1
+				exit
+			fi
+		;;
+		none|*)
+			# nothing
+			bKeyError=0
+		;;
+	esac
+
+	echo $bKeyError
+}
+
+# Add a uci section for a wifi network
+#	$1 	- interface number	#TODO: likely don't need this LAZAR
+#	$2 	- ssid
+#	$3	- encryption type
+#	$4	- password
+AddWifiNetwork () {
+	local id=$1
+	local ssid=$2
+	local encrypt=$3
+	local password=$4
+	local bNew=0
+
+	# check the network password
+	bError=$(_CheckPasswordLength $encrypt $password)
+
+	if [ $bError == 0 ]; then
+		# add new wifi-config section if required
+		local config=$(UciCheckWifiConfigIndex $id)
+		if [ "$config" != "wifi-config" ]; then
+			UciAddWifiConfigSection
+			bNew=1
+		fi
+
+		# populate the wifi-config section
+		UciPopulateWifiConfigSection $id "$ssid" "$encrypt" "$password"
+	fi
+}
+
+# Edit a uci section for a wifi network
+#	$1 	- interface number	#TODO: likely don't need this LAZAR
+#	$2 	- ssid
+#	$3	- encryption type
+#	$4	- password
+EditWifiNetwork () {
+	local id=$1
+	local ssid=$2
+	local encrypt=$3
+	local password=$4
+	local bNew=0
+
+	# check the network password
+	bError=$(_CheckPasswordLength $encrypt $password)
+
+	# TODO: LAZAR: add a search based on the ssid
+
+	if [ $bError == 0 ]; then
+		# add new wifi-config section if required
+		local config=$(UciCheckWifiConfigIndex $id)
+		if [ "$config" != "wifi-config" ]; then
+			_Print "> ERROR: Cannot modify network, it does not exist in the database." "error"
+		else
+			# populate the wifi-config section
+			UciPopulateWifiConfigSection $id "$ssid" "$encrypt" "$password"
+		fi
+	fi
+}
+
+
+
+### DEPRECATED ###
 # Add/edit a uci section for a wifi network
 #	$1 	- interface number
 #	$2 	- interface type "ap" or "sta"
+#	$1	- encryption type
 _AddWifiUciSection () {
 	local commit=1
 	local id=$1
-	local auth=$2
     local encrypt=$3
 	local bNew=0
-	
+
 
 	# setup new intf if required
 	local config=$(uci -q get wireless.\@wifi-config[$id])
@@ -287,7 +637,7 @@ _AddWifiUciSection () {
 	# 	# use UCI to set the network to access-point mode and wlan
 	# 	uci set wireless.@wifi-iface[$id].mode="ap"
 	# 	uci set wireless.@wifi-iface[$id].network="wlan"
-	# fi 
+	# fi
 
     # TODO: this entire bApNetwork block should not be done here
     # it should be in a separate function that's run when -ap mode is specified
@@ -302,53 +652,45 @@ _AddWifiUciSection () {
 		fi
 		if [ "$auth" != "" ]; then
 			uci set wireless.@wifi-iface[0].encryption="$encrypt"
-            uci set wireless.@wifi-iface[0].authentication="$auth"
+			uci set wireless.@wifi-iface[0].authentication="$auth"
 		fi
-            
-        # password
-		if [ "$password" != "" ] || 
+
+		# password
+		if [ "$password" != "" ] ||
 			[ "$auth" != "NONE" ]; then
 			uci set wireless.@wifi-iface[0].key="$password"
 		else
-            # remove password
+			# remove password
 			password=$(uci get wireless.@wifi-iface[0].key)
 			uci set wireless.@wifi-iface[0].key="$password"
 		fi
 
 		uci set wireless.@wifi-iface[0].ApCliEnable="1"
 
-		
+
 
 
 	else
+		# STA NETWORK: add to collection
 		# use UCI to set the ssid, encryption, and disabled options
 		uci set wireless.@wifi-config[$id].ssid="$ssid"
-        
-        # set auth modes
-        if [ "$auth" == "NONE" ]; then
-            uci set wireless.@wifi-config[$id].authentication="NONE"
-            uci set wireless.@wifi-config[$id].encryption="NONE"
-        else
-            uci set wireless.@wifi-config[$id].authentication="$auth"
-            uci set wireless.@wifi-config[$id].encryption="$encrypt"
-        fi
-		uci set wireless.@wifi-iface[0].ApCliEnable="1"
+		uci set wireless.@wifi-config[$id].encryption="$encrypt"
 		keyLength=${#password}
 
-		# set the network key based on the authentication
-		case "$auth" in
-			WPA2PSK|WPA1PSK)
+		# set the network key based on the encryption
+		case "$encrypt" in
+			psk2|psk)
 				if [ "$keyLength" -lt 8 ] ||
 					[ "$keyLength" -gt 64 ]; then
 					_Print "> ERROR: Password length does not match encryption type. WPA2 passwords must be between 8 and 64 characters." "error"
 					uci delete wireless.@wifi-config[$id]
-                    # does this not need a uci commit wireless here?
+					# TODO: does this not need a uci commit wireless here?
 					bError=1
 					exit
 				fi
 				uci set wireless.@wifi-config[$id].key="$password"
 			;;
-			WEP)
+			wep)
 				if [ "$keyLength" -lt 5 ]; then
 					_Print "> ERROR: Password length does not match encryption type. Please enter a valid password." "error"
 					uci delete wireless.@wifi-config[$id]
@@ -361,20 +703,17 @@ _AddWifiUciSection () {
 			none|*)
 				# # set no keys for open networks, delete any existing ones
 				# local key=$(uci -q get wireless.\@wifi-config[$id].key)
-                # 
+                #
 				# if [ "$key" != "" ]; then
 				# 	uci delete wireless.@wifi-config[$id].key
 				# fi
-                
+
                 # add a 'NONE' value as a placeholder for open networks
                 # the config parser in wifimanager expects non-empty values for existing configurations
-                uci set wireless.@wifi-config[$id].key='NONE'
+                uci set wireless.@wifi-config[$id].key='none'
 			;;
 		esac
 	fi
-
-	
-
 
 	# commit the changes
     # TODO: this is set as a local variable, and set to 1 at the top of this fn
@@ -385,6 +724,21 @@ _AddWifiUciSection () {
 	fi
 }
 
+# Enable or Disable a wifi interface
+#	$1 	- 'ap' or 'sta'
+#	$2	- enable (1) or disable (0)
+SetWifiIfaceEnable () {
+	local iface=$1
+	local bEnable=$2
+
+	# check if iface is an allowed input
+	local bInvalidInput=$(UciCheckWifiIfaceInput $iface)
+	if 	[ $bInvalidInput -eq 0 ]; then
+		UciSetWifiIfaceEnable $iface $bEnable
+	fi
+}
+
+### DEPRECATED ###
 # disable a uci wifi network section
 #	$1 - iface number
 #	$2 - value to set to disabled option (is 1 by default)
@@ -409,7 +763,26 @@ _DisableWifiUciSection () {
 	fi
 }
 
-# remove a uci section that defines a wifi network 
+# Remove a wifi-config section that defines a wifi network
+#	$1 	- interface number	#TODO: likely don't need this LAZAR
+#	$2 	- ssid
+RemoveWifiNetwork () {
+	local id=$1
+	local ssid=$2
+
+	# check the argument
+	if [ $id -ge 0 ]; then
+		# ensure that iface exists
+		local config=$(UciCheckWifiConfigIndex $id)
+		if [ "$config" == "wifi-config" ]; then
+			_Print "> Removing '$ssid' network from database" "output"
+			UciDeleteWifiConfigSection $id "$ssid"
+		fi
+	fi
+}
+
+### DEPRECATED ###
+# remove a uci section that defines a wifi network
 #	$1 - iface number
 _DeleteWifiUciSection () {
 	local commit=1
@@ -426,6 +799,53 @@ _DeleteWifiUciSection () {
 	fi
 }
 
+# change the priority of a network (by changing the uci wireless section order)
+#	$1 	- network section id
+#	$2	- network ssid
+#	$3 	- argument for moving the network
+SetWifiNetworkPriority () {
+	local id=$1
+	local ssid=$2
+	local argument=$3
+
+	#### wireless config file breakdown:
+	##	SECTION 					order
+	##	wireless.radio0				0
+	##	wireless.ap					1
+	##	wireless.sta				2
+	##	wireless.@wifi-config[0]	3		- highest priority for a network
+	##	wireless.@wifi-config[n]	n+3		- lowest priority for a network
+
+	# define the highest priority
+	local topPriority=3
+	# find the lowest priority
+	local bottomPriority=$(($(_FindNumNetworks) - 1  + $topPriority))
+	# find the network's current priority
+	local currPriority=$(($id + $topPriority))
+
+	# find the shift in priority
+	if [ "$argument" == "up" ]; then
+		desiredPriority=$(($currPriority - 1))
+	elif [ "$argument" == "down" ]; then
+		desiredPriority=$(($currPriority + 1))
+	fi
+
+	## find the new human-readable priority
+	local hmnPriority=$(($desiredPriority - $topPriority))
+
+	# check that shift is valid
+	if 	[ $desiredPriority -lt $topPriority ] ||
+		[ $desiredPriority -gt $bottomPriority ] ||
+		[ $currPriority -lt $topPriority ];
+	then
+		_Print "> ERROR: Invalid priority shift requested" "error"
+		_SetError
+	else
+		UciReorderWifiConfigSection $id "$ssid" $desiredPriority $hmnPriority
+	fi
+}
+
+### DEPRECATED ###
 # reorder a specified uci wifi section
 #	$1 	- iface number
 # 	$2 	- desired order number in uci config
@@ -450,6 +870,7 @@ _ReorderWifiUciSection () {
 	fi
 }
 
+### DEPRECATED ###
 # change the priority of a network (by changing the uci wireless section order)
 #	$1 	- network section id
 #	$2 	- argument for moving the network
@@ -463,7 +884,7 @@ _SetNetworkPriority () {
 	# find the ap network
 	local apId=$(_FindApNetwork)
 	local topPriority=1
-	
+
 	# if [ $apId == -1 ]; then
 	# 	# no AP network, top priority spot is 1 (radio0 is spot 0)
 	# 	topPriority=1
@@ -498,13 +919,15 @@ _SetNetworkPriority () {
 	fi
 }
 
+
+### DEPRECATED ###
 # output a JSON list of configured networks
 _JsonListUciNetworks () {
 	local count=0
 
-	# json setup      
+	# json setup
 	json_init
-	
+
 	# create the results array
 	json_add_array results
 
@@ -518,9 +941,9 @@ _JsonListUciNetworks () {
 		local ssidRd=$(uci -q get wireless.\@wifi-config[$count].ssid)
 		# local modeRd=$(uci -q get wireless.\@wifi-config[$count].mode)
 		local encrRd=$(uci -q get wireless.\@wifi-config[$count].encryption)
-        local authRd=$(uci -q get wireless.\@wifi-config[$count].authentication)
+		local authRd=$(uci -q get wireless.\@wifi-config[$count].authentication)
 		local passwordRd=$(uci -q get wireless.\@wifi-config[$count].key)
-		
+
 		if [ "$encrRd" == "wep" ]; then
 			passwordRd=$(uci -q get wireless.\@wifi-config[$count].key$passwordRd)
 		fi
@@ -529,7 +952,7 @@ _JsonListUciNetworks () {
 		json_add_object
 		json_add_string "ssid" "$ssidRd"
 		json_add_string "encryption" "$encrRd"
-        json_add_string "authentication" "$authRd"
+		#json_add_string "authentication" "$authRd"
 		json_add_string "password" "$passwordRd"
 		# json_add_string "mode" "$modeRd"
 		json_close_object
@@ -545,16 +968,16 @@ _JsonListUciNetworks () {
 	# print the json
 	if [ $bJson == 0 ]; then
 		json_dump | sed 's/,/,\n       /g' | sed 's/{ "/{\n\n        "/g' | sed 's/}/\n\}/g' | sed 's/\[/\[\n/g' | sed 's/\]/\n\]/g'
-
 	fi
 }
 
+### DEPRECATED ###
 # output a JSON object of specified network
 #	$1 	- network id
 _JsonUciNetworkInfo () {
 	local id=$1
 
-	# json setup      
+	# json setup
 	json_init
 
 	# find the first network
@@ -562,7 +985,7 @@ _JsonUciNetworkInfo () {
 
 	# check the network and input parameter
 	if 	[ "$network" == "wifi-config" ] &&
-		[ $id -ge 0 ]; 
+		[ $id -ge 0 ];
 	then
 		# find the data
 		local ssidRd=$(uci -q get wireless.\@wifi-config[$id].ssid)
@@ -570,7 +993,7 @@ _JsonUciNetworkInfo () {
 		local encrRd=$(uci -q get wireless.\@wifi-config[$id].encryption)
         local authRd=$(uci -q get wireless.\@wifi-config[$id].authentication)
 		local passwordRd=$(uci -q get wireless.\@wifi-config[$id].key)
-		
+
 		if [ "$encrRd" == "wep" ]; then
 			passwordRd=$(uci -q get wireless.\@wifi-config[$id].key$passwordRd)
 		fi
@@ -582,7 +1005,7 @@ _JsonUciNetworkInfo () {
         json_add_string "authentication" "$authRd"
 		json_add_string "password" "$passwordRd"
 		# json_add_string "mode" "$modeRd"
-		
+
 	else
 		json_add_boolean "success" 0
 	fi
@@ -591,26 +1014,28 @@ _JsonUciNetworkInfo () {
 	json_dump
 }
 
+### DEPRECATED ###
 _CheckWifiEntry () {
     # _Print "Entering Check_wifi_entry"
     local entry_number=$1
     local entry_exists=0
     local entry_type=$(uci -q get wireless.@wifi-config[$entry_number])
-    
+
     if [ "$entry_type" == "wifi-config" ]
     then
         entry_exists=1
     fi
-    
+
     echo $entry_exists
 }
 
+### DEPRECATED ###
 # clear all existing wifi networks
 _ClearWifiEntries () {
     _Print "Clearing all stored network entries."
     # count how many config entries there are
     local entry_number=0
-    
+
     local next_entry_exists=1
     while [ $next_entry_exists != 0 ]
     do
@@ -619,7 +1044,7 @@ _ClearWifiEntries () {
             entry_number=$((entry_number + 1))
         fi
     done
-    
+
     # delete the entries
     local step=0
     while [ $step -lt $entry_number ]
@@ -627,22 +1052,76 @@ _ClearWifiEntries () {
         uci delete wireless.@wifi-config[0]     # entries are shifted automatically
         step=$((step + 1))
     done
-    
+
     # reset ApCli options and disable it
     uci set wireless.@wifi-iface[0].ApCliEnable='0'
     uci set wireless.@wifi-iface[0].ApCliSsid='yourssid'
     uci set wireless.@wifi-iface[0].ApCliPassWord='yourpassword'
     uci commit
-    
+
     # reset the wifi and disconnect from current network
     _Print "Restarting WiFi driver and disconnecting from current network."
     _Print "This will end all wireless ssh sessions!"
     wifi
 }
 
-################################
-##### User Input Functions #####
+# clear all configured wifi networks
+ClearAllWifiNetworks () {
+	_Print "Clearing all stored network entries." "info"
+	local count=0
+
+	# find the first network
+	local config=$(UciCheckWifiConfigIndex $count)
+
+	# loop through all configured networks
+	while [ "$config" == "wifi-config" ]
+	do
+		# remove the network
+		UciDeleteWifiConfigSection $count
+
+		# grab the next configured network
+		# 	don't increment count, loop will exit when there are no more networks left
+		config=$(UciCheckWifiConfigIndex $count)
+	done
+
+	# reset the STA paramters and disable it
+	UciPopulateWifiIfaceSection "sta" "yourssid" "psk2" "yourpassword"
+	UciSetWifiIfaceEnable "sta" 0
+
+	_Print "Restarting WiFi driver and disconnecting from current network."
+	_Print "This will end all wireless ssh sessions!"
+
+	# reset the wifi adapter with the new settings
+	wifi
+}
+
+
+
+########################################
+###     User Input Functions
+########################################
+
+# Normalize the authentication input
+#	modifies the global auth variable
+_NormalizeEncryptInput () {
+	case "$encrypt" in
+		WPA1PSKWPA2PSK|WPA2PSK|wpa2|psk2|WPA2|PSK2|wpa-mixed)
+			encrypt="psk2"
+		;;
+		WPA1PSK|wpa|psk|WPA|PSK)
+			encrypt="psk1"
+		;;
+		wep|WEP)
+			encrypt="wep"
+		;;
+		none|*)
+			encrypt="none"
+		;;
+	esac
+}
+
 # read WPA settings from json data
+# TODO: find out if this is still needed
 _UserInputJsonReadNetworkAuthPsk () {
 	local bFoundType1=0
 	local bFoundType2=0
@@ -701,30 +1180,20 @@ _UserInputJsonReadNetworkAuth () {
 	json_select results
 	json_get_keys keys
 
-	# read the encryption object
+	# read the wifi scan object object
 	if 	[ "$type" == "array" ] &&
 		[ "$keys" != "" ];
 	then
-		# select the encryption object
+		# select the specific wifi network
 		json_select $index
 
 		# read the authentication object type
 		# json_get_var auth_type encryption # old backwards mapping
-        json_get_var auth_type authentication
-		if [ "$auth_type" == "WPA1PSKWPA2PSK" ]; then
-			# read the authentication type
-			auth="WPA2PSK"
-		else
-			auth="$auth_type"
-		fi
-        
-        # read the encryption type value into variable "encrypt"
-        # json_get_var encrypt authentication # old backwards mapping
-        json_get_var encrypt encryption
+		json_get_var encrypt encryption
 	else
-		# no authentication, so no encryption: open network
-		auth="NONE"
-        encrypt="NONE"
+		# results object is not an array and there are no keys
+		# OLD COMMENT: no encryption: open network
+		encrypt="none"
 	fi
 }
 
@@ -740,60 +1209,58 @@ _UserInputReadNetworkAuth () {
 	echo ""
 	echo -n "Selection: "
 	read input
-	
-    
+
+
     # assume default encryption type for all authentication modes
 	case "$input" in
-    	1)
-			auth="WPA2PSK"
-            encrypt="$DEFAULTENCRYPTION"
-	    ;;
-	    2)
-			auth="WPA1PSK"
-            encrypt="$DEFAULTENCRYPTION"
-	    ;;
-	    3)
-			auth="WEP"
-            encrypt="$DEFAULTENCRYPTION"
-	    ;;
-	    4)  # no authentication, no encryption
-			auth="NONE"
-            encrypt="NONE"
-            key="NONE"
-	    ;;
+		1)
+			encrypt="psk2"
+		;;
+		2)
+			encrypt="psk"
+		;;
+		3)
+			encrypt="wep"
+		;;
+		4)  # no encryption, no key
+			encrypt="none"
+			key="none"
+		;;
 	esac
-
 }
 
 
 # scan wifi networks, display for user, allow them to pick one
+#	when function completes successfully, the following global variables will be populated:
+#	* ssid
+#	* encrypt
 _UserInputScanWifi () {
 	# run the scan command and get the response
 	RESP=$(ubus call onion wifi-scan '{"device":"ra0"}')
-	
+
 	# read the json response
 	json_load "$RESP"
-	
-	# check that array is returned  
+
+	# check that array is returned
 	json_get_type type results
 
 	# find all possible keys
 	json_select results
 	json_get_keys keys
-	
-	
+
+
 	if 	[ "$type" == "array" ] &&
 		[ "$keys" != "" ];
 	then
 		echo ""
 		echo "Select Wifi network:"
-		
+
 		# loop through the keys
 		for key in $keys
 		do
 			# select the array element
 			json_select $key
-			
+
 			# find the ssid
 			json_get_var cur_ssid ssid
 			if [ "$cur_ssid" == "" ]
@@ -810,11 +1277,11 @@ _UserInputScanWifi () {
 		echo ""
 		echo -n "Selection: "
 		read input;
-		
+
 		# get the selected ssid
 		json_select $input
 		json_get_var ssid ssid
-		
+
 		if [ "$ssid" == "" ]; then
 			_Print "> ERROR: specified ssid not in the database" "error"
 			bError=1
@@ -822,13 +1289,13 @@ _UserInputScanWifi () {
 		fi
 		echo "Network: $ssid"
 
-		# detect the authentication type 
+		# detect the authentication type
 		_UserInputJsonReadNetworkAuth "$input"
 
-		echo "Authentication type: $auth"
-        
-        # print encryption type
-        echo "Encryption type: $encrypt"
+		#echo "Authentication type: $auth"
+
+		# print encryption type
+		echo "Encryption type: $encrypt"
 	else
 		wifi
 		bScanFailed=1
@@ -837,6 +1304,10 @@ _UserInputScanWifi () {
 }
 
 # main function to read user input
+#	when function completes successfully, the following global variables will be populated:
+#	* ssid
+#	* encrypt
+#	* password
 _UserInputMain () {
 	bScanFailed=0
 	echo "Onion Omega Wifi Setup"
@@ -849,7 +1320,7 @@ _UserInputMain () {
 	echo -n "Selection: "
 	read input
 
-	# choice between scanning 
+	# choice between scanning
 	if [ $input == 1 ]
 	then
 		# perform the scan and select network
@@ -870,7 +1341,7 @@ _UserInputMain () {
 	fi
 
 	# read the network password
-	if 	[ "$auth" != "NONE" ] &&
+	if 	[ "$encrypt" != "none" ] &&
 		[ $bScanFailed == 0 ];
 	then
 		echo -n "Enter password: "
@@ -882,8 +1353,10 @@ _UserInputMain () {
 
 
 
-###########################
-##### Parse Arguments #####
+########################################
+###     Parse Arguments
+########################################
+
 
 # parse arguments
 while [ "$1" != "" ]
@@ -903,9 +1376,14 @@ do
 			shift
 		;;
 		# commands
-    	-add|add|-edit|edit)
+		-add|add)
 			bCmd=1
 			bCmdAdd=1
+			shift
+		;;
+		-edit|edit)
+			bCmd=1
+			bCmdEdit=1
 			shift
 		;;
 		-disable|disable)
@@ -931,11 +1409,13 @@ do
 		-list|list)
 			bCmd=1
 			bCmdList=1
+			bJson=1
 			shift
 		;;
 		-info|info)
 			bCmd=1
 			bCmdInfo=1
+			bJson=1
 			shift
 		;;
 		# parameters
@@ -951,7 +1431,7 @@ do
 		;;
 		-encr|encr)
 			shift
-			auth=$1
+			encrypt=$1
 			shift
 		;;
 		-move|move)
@@ -978,17 +1458,20 @@ done
 
 
 
-########################
-########################
-##### Main Program #####
+########################################
+########################################
+###     Main Program
+########################################
 
 ## user input ##
 if [ $bCmd == 0 ]; then
+	# grab input from the user
 	_UserInputMain
+	# now globals ssid, encrypt, and password are populated
 
 	# enable the add command if user input was successful (ssid and auth are defined)
 	if 	[ "$ssid" != "" ] &&
-		[ "$auth" != "" ];
+		[ "$encrypt" != "" ];
 	then
 		bCmdAdd=1
 	fi
@@ -1001,22 +1484,15 @@ _Init
 ## parameter processing
 if [ $bApNetwork == 1 ]; then
 	networkType="ap"
-	id=$(_FindApNetwork)
-	
-	if 	[ $id != -1 ] &&
-		[ "$ssid" == "" ]; 
-	then
-		ssid=$(_FindNetworkSsid)
-	fi
-
+	id="ap"
 else
 	networkType="sta"
 	# check if network already exists in configuration
 	id=$(_FindNetworkBySsid "$ssid")
 fi
 
-if [ "$auth" != "" ]; then
-	_NormalizeAuthInput
+if [ "$encrypt" != "" ]; then
+	_NormalizeEncryptInput
 fi
 
 
@@ -1028,54 +1504,56 @@ if [ $bCmdAdd == 1 ]; then
 		id=$(_FindNumNetworks)
 	fi
 
-	# add or edit the uci entry
-	_AddWifiUciSection $id $auth $encrypt
+	# add the network entry
+	AddWifiNetwork $id "$ssid" "$encrypt" "$password"
 
-	# set new AP networks to top in list
+elif [ $bCmdEdit == 1 ]; then
 	if [ $bApNetwork == 1 ]; then
-		_ReorderWifiUciSection $id 1
+		# edit the ap network
+		UciPopulateWifiIfaceSection "$networkType" "$ssid" "$encrypt" "$password"
+	else
+		# edit the network entry
+		EditWifiNetwork $id "$ssid" "$encrypt" "$password"
 	fi
 
 elif [ $bCmdDisable == 1 ]; then
-	# only disable existing networks
-	if [ $id != -1 ]; then
-		_DisableWifiUciSection $id
-	fi
+	# disable the network
+	SetWifiIfaceEnable $networkType 0
 
 elif [ $bCmdEnable == 1 ]; then
-	# only enable existing networks
-	if [ $id != -1 ]; then
-		_DisableWifiUciSection $id 0
-	fi
+	# enable the network
+	SetWifiIfaceEnable $networkType 1
 
 elif [ $bCmdRemove == 1 ]; then
 	# only remove existing networks
 	if [ $id != -1 ]; then
-		_DeleteWifiUciSection $id
+		RemoveWifiNetwork $id "$ssid"
 	fi
 
 elif [ $bCmdPriority == 1 ]; then
 	# only move existing network
 	if [ $id != -1 ]; then
-		_SetNetworkPriority $id $priorityMove
-	fi 
+		SetWifiNetworkPriority $id "$ssid" "$priorityMove"
+	fi
 
 elif [ $bCmdList == 1 ]; then
-	_JsonListUciNetworks
+	UciJsonOutputAllNetworks
 
 	# remove error message
 	id=0
 
 elif [ $bCmdInfo == 1 ]; then
-	_JsonUciNetworkInfo $id
+	UciJsonOutputWifiNetworkInfo $id "$ssid"
 
 	# remove error message (will be printed in json)
-	id=0
+	#id=0 #TODO: confirm this is not needed
 
 elif [ $bCmdClear == 1 ]; then
-    _ClearWifiEntries
-    id=0
-    
+	ClearAllWifiNetworks
+
+	# remove error message
+	id=0
+
 fi # command if else statement
 
 
@@ -1086,22 +1564,19 @@ if [ $id == -1 ]; then
 fi
 
 if [ $bError == 0 ]; then
-	if 	[ $bCmdAdd == 1 ] || 
+	if 	[ $bCmdAdd == 1 ] ||
 		[ $bCmdDisable == 1 ] ||
 		[ $bCmdEnable == 1 ] ||
 		[ $bCmdRemove == 1 ] ||
-        # bCmdClear is not considered because all wifi options will be reset
+		# bCmdClear is not considered because all wifi options will be reset
 		[ $bCmdPriority == 1 ];
 	then
 		_Print "> Restarting wifimanager for changes to take effect" "status"
 		wifimanager &
 	fi
-else
-	exit
 fi
 
 
 
 ## json finish
 _Close
-
