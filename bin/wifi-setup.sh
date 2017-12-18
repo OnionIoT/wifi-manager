@@ -458,6 +458,18 @@ UciSetWifiIfaceEnable () {
 	# TODO: ensure the above is required
 }
 
+# set wifi-device mode
+#
+UciSetWifiDeviceMode () {
+	local mode="$1"
+
+	# set the device mode
+	uci set wireless.radio0.device_mode="$mode"
+
+	# commit the changes
+	UciCommitWireless
+}
+
 # populate a wireless.wifi-config section
 #  input:
 #	$1	- iface
@@ -735,6 +747,20 @@ SetWifiIfaceEnable () {
 	local bInvalidInput=$(UciCheckWifiIfaceInput $iface)
 	if 	[ $bInvalidInput -eq 0 ]; then
 		UciSetWifiIfaceEnable $iface $bEnable
+	fi
+}
+
+# Set the device mode
+#	$1	- 'ap', 'sta', or 'apsta'
+SetWifiDeviceMode () {
+	local mode="$1"
+
+	# check if valid input
+	if 	[ "$mode" == "ap" ] ||
+		[ "$mode" == "sta" ] ||
+		[ "$mode" == "apsta" ];
+	then
+		UciSetWifiDeviceMode "$mode"
 	fi
 }
 
@@ -1506,6 +1532,10 @@ if [ $bCmdAdd == 1 ]; then
 
 	# add the network entry
 	AddWifiNetwork $id "$ssid" "$encrypt" "$password"
+	# enable the sta interface
+	UciSetWifiIfaceEnable "sta" 1
+	# set device mode to enable sta
+	SetWifiDeviceMode "apsta"
 
 elif [ $bCmdEdit == 1 ]; then
 	if [ $bApNetwork == 1 ]; then
@@ -1572,7 +1602,7 @@ if [ $bError == 0 ]; then
 		[ $bCmdPriority == 1 ];
 	then
 		_Print "> Restarting wifimanager for changes to take effect" "status"
-		wifimanager &
+		wifi
 	fi
 fi
 
