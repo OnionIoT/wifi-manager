@@ -328,6 +328,14 @@ UciReorderWifiConfigSection () {
 UciJsonOutputWifiNetworkInfo () {
 	local id=$1
 	local ssid=$2
+	local connectedNetwork=""
+	local staDisabled="1"
+
+	# find the currently connected network
+	staDisabled=$(UciGetWifiIfaceDisabled "sta")
+	if [ "$staDisabled" == "0" ]; then
+		connectedNetwork=$(UciGetWifiIfaceOption "sta" "ssid")
+	fi
 
 	# check that this wifi-config exists
 	local config=$(UciCheckWifiConfigIndex $id)
@@ -339,6 +347,13 @@ UciJsonOutputWifiNetworkInfo () {
 		local encrRd=$(uci -q get wireless.\@wifi-config[$id].encryption)
 		local authRd=$(uci -q get wireless.\@wifi-config[$id].authentication)
 		local passwordRd=$(uci -q get wireless.\@wifi-config[$id].key)
+
+		# check if this network is currently connected
+		if [ "$connectedNetwork" == "$ssidRd" ]; then
+			json_add_boolean "enabled" 1
+		else
+			json_add_boolean "enabled" 0
+		fi
 
 		if [ "$encrRd" == "wep" ]; then
 			passwordRd=$(uci -q get wireless.\@wifi-config[$id].key$passwordRd)
@@ -476,6 +491,43 @@ UciPopulateWifiIfaceSection () {
 		UciCommitWireless
 	fi
 }
+
+# from a wireless.wifi-iface section, get the value of an option
+#  input:
+#	$1	- iface
+#	$2 	- option
+#  output:
+#	if section found: 	<option value>
+#	no section found:	""
+UciGetWifiIfaceOption () {
+	local iface=$1
+	local option="$2"
+	local value=""
+
+	# check if iface is an allowed input
+	local bInvalidInput=$(UciCheckWifiIfaceInput $iface)
+	if 	[ $bInvalidInput -eq 0 ]; then
+		value=$(uci -q get wireless.$iface.$option)
+	fi
+
+	echo "$value"
+}
+
+
+# get a wireless.wifi-iface section's 'disabled' option's value
+#  input:
+#	$1	- iface
+#  output:
+#	0 or 1
+UciGetWifiIfaceDisabled () {
+	local iface=$1
+	local disabled="1"
+
+	disabled=$(UciGetWifiIfaceOption "$iface" "disabled")
+
+	echo "$disabled"
+}
+
 
 
 
