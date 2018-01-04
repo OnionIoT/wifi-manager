@@ -63,6 +63,7 @@ usage () {
 	_Print "Usage: $0 priority -ssid <ssid> -move <up|down>"
 	_Print "           up:     increase the priority"
 	_Print "           down:   decrease the priority"
+	_Print "           top:    make highest priority network"
 	_Print ""
 	_Print "	list "
 	_Print "Functionality: Display a JSON-formatted list of all configured networks"
@@ -854,6 +855,8 @@ SetWifiNetworkPriority () {
 		desiredPriority=$(($currPriority - 1))
 	elif [ "$argument" == "down" ]; then
 		desiredPriority=$(($currPriority + 1))
+	elif [ "$argument" == "top" ]; then
+		desiredPriority=$topPriority
 	fi
 
 	## find the new human-readable priority
