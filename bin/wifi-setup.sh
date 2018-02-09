@@ -247,10 +247,10 @@ UciCheckWifiConfigIndex () {
 #	$3	- encryption
 #	$4	- password
 UciPopulateWifiConfigSection () {
-	local index=$1
-	local ssid=$2
-	local encryption=$3
-	local password=$4
+	local index="$1"
+	local ssid="$2"
+	local encryption="$3"
+	local password="$4"
 
 	# set the network key based on the encryption
 	case "$encryption" in
@@ -581,14 +581,14 @@ _CheckPasswordLength () {
 #	$3	- encryption type
 #	$4	- password
 AddWifiNetwork () {
-	local id=$1
-	local ssid=$2
-	local encrypt=$3
-	local password=$4
+	local id="$1"
+	local ssid="$2"
+	local encrypt="$3"
+	local password="$4"
 	local bNew=0
 
 	# check the network password
-	bError=$(_CheckPasswordLength $encrypt $password)
+	bError=$(_CheckPasswordLength $encrypt "$password")
 
 	if [ $bError == 0 ]; then
 		# add new wifi-config section if required
@@ -616,7 +616,7 @@ EditWifiNetwork () {
 	local bNew=0
 
 	# check the network password
-	bError=$(_CheckPasswordLength $encrypt $password)
+	bError=$(_CheckPasswordLength $encrypt "$password")
 
 	# TODO: LAZAR: add a search based on the ssid
 
@@ -1092,7 +1092,7 @@ do
 		;;
 		-encr|encr)
 			shift
-			encrypt=$1
+			encrypt="$1"
 			shift
 		;;
 		-move|move)
