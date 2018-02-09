@@ -246,11 +246,13 @@ UciCheckWifiConfigIndex () {
 #	$2	- ssid
 #	$3	- encryption
 #	$4	- password
+#	$5	- bssid (optional)
 UciPopulateWifiConfigSection () {
 	local index="$1"
 	local ssid="$2"
 	local encryption="$3"
 	local password="$4"
+	local bssid="$5"
 
 	# set the network key based on the encryption
 	case "$encryption" in
@@ -271,6 +273,11 @@ UciPopulateWifiConfigSection () {
 	# set the ssid and encryption type
 	uci set wireless.\@wifi-config[$index].ssid="$ssid"
 	uci set wireless.\@wifi-config[$index].encryption="$encrypt"
+
+	# set the bssid
+	if [ "$bssid" != "" ]; then
+		uci set wireless.\@wifi-config[$index].bssid="$bssid"
+	fi
 
 	# commit the changes
 	UciCommitWireless
@@ -347,6 +354,7 @@ UciJsonOutputWifiNetworkInfo () {
 		local encrRd=$(uci -q get wireless.\@wifi-config[$id].encryption)
 		local authRd=$(uci -q get wireless.\@wifi-config[$id].authentication)
 		local passwordRd=$(uci -q get wireless.\@wifi-config[$id].key)
+		local bssidRd=$(uci -q get wireless.\@wifi-config[$id].bssid)
 
 		# check if this network is currently connected
 		if [ "$connectedNetwork" == "$ssidRd" ]; then
@@ -364,6 +372,9 @@ UciJsonOutputWifiNetworkInfo () {
 		_Print "$encrRd" "encryption"
 		_Print "$passwordRd" "password"
 
+		if [ "$bssidRd" != "" ]; then
+			_Print "$bssidRd" "bssid"
+		fi
 	else
 		$bError=1
 	fi
@@ -580,11 +591,13 @@ _CheckPasswordLength () {
 #	$2 	- ssid
 #	$3	- encryption type
 #	$4	- password
+#	$5	- bssid (optional)
 AddWifiNetwork () {
 	local id="$1"
 	local ssid="$2"
 	local encrypt="$3"
 	local password="$4"
+	local bssid="$5"
 	local bNew=0
 
 	# check the network password
@@ -599,7 +612,7 @@ AddWifiNetwork () {
 		fi
 
 		# populate the wifi-config section
-		UciPopulateWifiConfigSection $id "$ssid" "$encrypt" "$password"
+		UciPopulateWifiConfigSection $id "$ssid" "$encrypt" "$password" "$bssid"
 	fi
 }
 
@@ -608,11 +621,13 @@ AddWifiNetwork () {
 #	$2 	- ssid
 #	$3	- encryption type
 #	$4	- password
+#	$5 	- bssid (optional)
 EditWifiNetwork () {
 	local id=$1
 	local ssid=$2
 	local encrypt=$3
 	local password=$4
+	local bssid=$5
 	local bNew=0
 
 	# check the network password
@@ -627,7 +642,7 @@ EditWifiNetwork () {
 			_Print "> ERROR: Cannot modify network, it does not exist in the database." "error"
 		else
 			# populate the wifi-config section
-			UciPopulateWifiConfigSection $id "$ssid" "$encrypt" "$password"
+			UciPopulateWifiConfigSection $id "$ssid" "$encrypt" "$password" "$bssid"
 		fi
 	fi
 }
@@ -1100,10 +1115,15 @@ do
 			priorityMove=$1
 			shift
 		;;
-        -clear|clear)
+		-bssid|bssid)
+			shift
+			bssid="$1"
+			shift
+		;;
+		-clear|clear)
 			bCmd=1
-            bCmdClear=1
-            shift
+			bCmdClear=1
+			shift
 		;;
 		-h|--h|help|-help|--help)
 			usage
@@ -1166,7 +1186,7 @@ if [ $bCmdAdd == 1 ]; then
 	fi
 
 	# add the network entry
-	AddWifiNetwork $id "$ssid" "$encrypt" "$password"
+	AddWifiNetwork $id "$ssid" "$encrypt" "$password" "$bssid"
 	# enable the sta interface
 	UciSetWifiIfaceEnable "sta" 1
 	# set device mode to enable sta
@@ -1178,7 +1198,7 @@ elif [ $bCmdEdit == 1 ]; then
 		UciPopulateWifiIfaceSection "$networkType" "$ssid" "$encrypt" "$password"
 	else
 		# edit the network entry
-		EditWifiNetwork $id "$ssid" "$encrypt" "$password"
+		EditWifiNetwork $id "$ssid" "$encrypt" "$password" "$bssid"
 	fi
 
 elif [ $bCmdDisable == 1 ]; then
