@@ -9,6 +9,7 @@
 # options
 bVerbose=0
 bJson=0
+bBase64=0
 bError=0
 
 #commands
@@ -42,39 +43,39 @@ usage () {
 	_Print ""
 
 	_Print "Command Line Usage:"
-	_Print "$0 <command> <parameters>"
+	_Print "$0 [options] <command> <parameters>"
+	_Print ""
 	_Print ""
 	_Print "Available Commands:"
-	_Print "	add "
+	_Print "  add "
 	_Print "Functionality: Add a new WiFi network to the Omega's settings"
 	_Print "Usage: $0 add -ssid <ssid> -encr <encryption type> -password <password>"
 	_Print "Valid encryption types [WPA2, WPA, WEP, NONE]"
 	_Print ""
-	_Print "	edit "
+	_Print "  edit "
 	_Print "Functionality: Edit the information of a configured WiFi network"
 	_Print "Usage: $0 edit -ssid <ssid> -encr <encryption type> -password <password>"
 	_Print ""
-	_Print "	remove "
+	_Print "  remove "
 	_Print "Functionality: Remove an existing WiFi network from the Omega's settings"
 	_Print "Usage: $0 remove -ssid <ssid>"
 	_Print ""
-	_Print "	priority "
+	_Print "  priority "
 	_Print "Functionality: Move a WiFi network up or down in the priority list when attempting to connect"
 	_Print "Usage: $0 priority -ssid <ssid> -move <up|down>"
 	_Print "           up:     increase the priority"
 	_Print "           down:   decrease the priority"
 	_Print "           top:    make highest priority network"
 	_Print ""
-	_Print "	list "
+	_Print "  list "
 	_Print "Functionality: Display a JSON-formatted list of all configured networks"
 	_Print "Usage: $0 list"
 	_Print ""
-	_Print "	info "
+	_Print "  info "
 	_Print "Functionality: Display a JSON-formatted table of all info for specified network"
 	_Print "Usage: $0 info -ssid <ssid>"
 	_Print ""
-
-	_Print "	clear "
+	_Print "  clear "
 	_Print "Functionality: Clear all saved network configurations"
 	_Print "Usage: $0 clear"
 	_Print ""
@@ -84,10 +85,7 @@ usage () {
 	_Print "  -v      Increase output verbosity"
 	_Print "  -j      Set all output to JSON"
 	_Print "  -ap     Set any commands above to refer to an AP network"
-	_Print ""
-
-	_Print ""
-	_Print "Run 'wifimanager' to make network configuration changes take effect"
+	_Print "  -b64    Input arguments are base64 encoded"
 	_Print ""
 }
 
@@ -107,7 +105,7 @@ _Init () {
 #	$2	- the json index string
 _Print () {
 	if [ $bJson == 0 ]; then
-		echo $1
+		echo "$1"
 	else
 		json_add_string "$2" "$1"
 	fi
@@ -128,6 +126,15 @@ _Close () {
 		# print the json
 		json_dump
 	fi
+}
+
+# decode a base64 encoded string
+#	$1	- base64 encoded string
+#	returns decoded string
+_base64Decode () {
+	local string="$1"
+	string=$(echo "$string" | base64 -d)
+	echo "$string"
 }
 
 
@@ -1051,6 +1058,10 @@ do
 			bApNetwork=1
 			shift
 		;;
+		-b64|--b64|-base64|--base64|base64)
+			bBase64=1
+			shift
+		;;
 		# commands
 		-add|add)
 			bCmd=1
@@ -1094,6 +1105,15 @@ do
 			bJson=1
 			shift
 		;;
+		-clear|clear)
+			bCmd=1
+			bCmdClear=1
+			shift
+		;;
+		-h|--h|help|-help|--help)
+			usage
+			exit
+		;;
 		# parameters
 		-ssid|ssid)
 			shift
@@ -1120,16 +1140,7 @@ do
 			bssid="$1"
 			shift
 		;;
-		-clear|clear)
-			bCmd=1
-			bCmdClear=1
-			shift
-		;;
-		-h|--h|help|-help|--help)
-			usage
-			exit
-		;;
-	    *)
+		*)
 			echo "ERROR: Invalid Argument: $1"
 			usage
 			exit
@@ -1170,6 +1181,15 @@ else
 	networkType="sta"
 	# check if network already exists in configuration
 	id=$(_FindNetworkBySsid "$ssid")
+fi
+
+# base64 decode of parameter arguments
+if [ $bBase64 == 1 ]; then
+	ssid=$(_base64Decode "$ssid")
+	password=$(_base64Decode "$password")
+	encrypt=$(_base64Decode "$encrypt")
+	priorityMove=$(_base64Decode "$priorityMove")
+	bssid=$(_base64Decode "$bssid")
 fi
 
 if [ "$encrypt" != "" ]; then
