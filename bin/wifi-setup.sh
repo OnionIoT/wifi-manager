@@ -1173,6 +1173,15 @@ fi
 ## json init
 _Init
 
+# base64 decode of parameter arguments
+if [ $bBase64 == 1 ]; then
+	ssid=$(_base64Decode "$ssid")
+	password=$(_base64Decode "$password")
+	encrypt=$(_base64Decode "$encrypt")
+	priorityMove=$(_base64Decode "$priorityMove")
+	bssid=$(_base64Decode "$bssid")
+fi
+
 ## parameter processing
 if [ $bApNetwork == 1 ]; then
 	networkType="ap"
@@ -1181,15 +1190,6 @@ else
 	networkType="sta"
 	# check if network already exists in configuration
 	id=$(_FindNetworkBySsid "$ssid")
-fi
-
-# base64 decode of parameter arguments
-if [ $bBase64 == 1 ]; then
-	ssid=$(_base64Decode "$ssid")
-	password=$(_base64Decode "$password")
-	encrypt=$(_base64Decode "$encrypt")
-	priorityMove=$(_base64Decode "$priorityMove")
-	bssid=$(_base64Decode "$bssid")
 fi
 
 if [ "$encrypt" != "" ]; then
