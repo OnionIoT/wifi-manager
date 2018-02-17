@@ -50,7 +50,7 @@ usage () {
 	_Print "  add "
 	_Print "Functionality: Add a new WiFi network to the Omega's settings"
 	_Print "Usage: $0 add -ssid <ssid> -encr <encryption type> -password <password>"
-	_Print "Valid encryption types [WPA2, WPA, WEP, NONE]"
+	_Print "Valid encryption types [psk2, psk, wep, none]"
 	_Print ""
 	_Print "  edit "
 	_Print "Functionality: Edit the information of a configured WiFi network"
