@@ -20,6 +20,7 @@ bCmdDisable=0
 bCmdEnable=0
 bCmdRemove=0
 bCmdClear=0     # for clearing saved network entries
+bCmdReset=0     # for overwriting wireless config with factory file
 bCmdPriority=0
 bCmdList=0
 bCmdInfo=0
@@ -79,6 +80,10 @@ usage () {
 	_Print "Functionality: Clear all saved network configurations"
 	_Print "Usage: $0 clear"
 	_Print ""
+	#_Print "  reset "
+	#_Print "Functionality: Completely reset wireless network configuration to factory settings"
+	#_Print "Usage: $0 reset"
+	#_Print ""
 
 	_Print ""
 	_Print "Command Line Options:"
@@ -778,6 +783,25 @@ ClearAllWifiNetworks () {
 	wifi
 }
 
+# reset all wireless and network settings to that of factory
+ResetNetworkSettings () {
+	_Print "Reseting all wireless network settings to factory state." "info"
+
+	cp /rom/etc/config/wireless /etc/config/wireless
+	cp /rom/etc/config/network /etc/config/network
+
+	# find the hostname
+	local name=$(uci -q get system.\@system[0].hostname)
+	uci set wireless.ap.ssid="$name"
+	UciCommitWireless
+
+	_Print "Restarting WiFi driver and disconnecting from current network."
+	_Print "This will end all wireless ssh sessions!"
+
+	# reset the wifi adapter with the new settings
+	wifi
+}
+
 
 
 ########################################
@@ -1110,6 +1134,11 @@ do
 			bCmdClear=1
 			shift
 		;;
+		-reset|reset)
+			bCmd=1
+			bCmdReset=1
+			shift
+		;;
 		-h|--h|help|-help|--help)
 			usage
 			exit
@@ -1259,6 +1288,12 @@ elif [ $bCmdClear == 1 ]; then
 	# remove error message
 	id=0
 
+elif [ $bCmdReset == 1 ]; then
+	ResetNetworkSettings
+
+	# remove error message
+	id=0
+
 fi # command if else statement
 
 
@@ -1273,7 +1308,7 @@ if [ $bError == 0 ]; then
 		[ $bCmdDisable == 1 ] ||
 		[ $bCmdEnable == 1 ] ||
 		[ $bCmdRemove == 1 ] ||
-		# bCmdClear is not considered because all wifi options will be reset
+		# bCmdClear and bCmdReset are not considered because all wifi options will be reset
 		[ $bCmdPriority == 1 ];
 	then
 		_Print "> Restarting wifimanager for changes to take effect" "status"
