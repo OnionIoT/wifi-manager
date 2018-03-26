@@ -426,6 +426,50 @@ UciJsonOutputAllNetworks () {
 	fi
 }
 
+# output a JSON object of AP network
+UciJsonOutputWifiApInfo () {
+	# create the results array
+	json_add_array results
+	# create an object for the AP network
+	json_add_object
+
+	## populate with AP info
+	# find the data
+	local ssidRd=$(uci -q get wireless.ap.ssid)
+	local modeRd=$(uci -q get wireless.ap.mode)
+	local encrRd=$(uci -q get wireless.ap.encryption)
+	local authRd=$(uci -q get wireless.ap.authentication)
+	local passwordRd=$(uci -q get wireless.ap.key)
+	local bDisabledRd=$(uci -q get wireless.ap.disabled)
+	local ipAddr=$(uci -q get network.wlan.ipaddr)
+
+	if [ "$bDisabledRd" == "0" ]; then
+		json_add_boolean "enabled" 1
+	else
+		json_add_boolean "enabled" 0
+	fi
+
+	if [ "$encrRd" == "wep" ]; then
+		passwordRd=$(uci -q get wireless.ap.key$passwordRd)
+	fi
+
+	# create and populate object for this network
+	_Print "$ssidRd" "ssid"
+	_Print "$encrRd" "encryption"
+	_Print "$passwordRd" "password"
+	_Print "$ipAddr" "ip"
+
+	# close the object
+	json_close_object
+	# close the array
+	json_close_array
+
+	# print the json
+	if [ $bJson == 0 ]; then
+		json_dump | sed 's/,/,\n       /g' | sed 's/{ "/{\n\n        "/g' | sed 's/}/\n\}/g' | sed 's/\[/\[\n/g' | sed 's/\]/\n\]/g'
+	fi
+}
+
 
 ### wifi-iface ###
 
@@ -1271,7 +1315,11 @@ elif [ $bCmdPriority == 1 ]; then
 	fi
 
 elif [ $bCmdList == 1 ]; then
-	UciJsonOutputAllNetworks
+	if [ $bApNetwork == 1 ]; then
+		UciJsonOutputWifiApInfo
+	else
+		UciJsonOutputAllNetworks
+	fi
 
 	# remove error message
 	id=0
