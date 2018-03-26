@@ -1289,6 +1289,7 @@ elif [ $bCmdEdit == 1 ]; then
 	if [ $bApNetwork == 1 ]; then
 		# edit the ap network
 		UciPopulateWifiIfaceSection "$networkType" "$ssid" "$encrypt" "$password"
+		bCmdAdd=1	# ensure wifi gets called to make sure changes get applied
 	else
 		# edit the network entry
 		EditWifiNetwork $id "$ssid" "$encrypt" "$password" "$bssid"
